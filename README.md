@@ -2,6 +2,10 @@
 
 Control 1-8 el wires with the sound around you.
 
+If there is no sound around you for 5 seconds, it reads `morse.txt` off an SD card and blinks that on random wires instead.
+
+If the EL Sequencer board doesn't receive any inputs at all for 7 seconds, it will blink wires randomly for random amounts of time.
+
 
 Tools
 -----
@@ -51,7 +55,7 @@ Advanced Sound Reactive
 
 - Teensy Audio Board - $14.95 - https://www.sparkfun.com/products/12767 - This makes it easy to hook a mic and do the math for an equalizer. I also plan on using the audio out to do something trippy like https://itunes.apple.com/us/app/the-app-formerly-known-as-h-r/id1087530357?mt=8
 
-- Microphone for Audio Board
+- Microphone and thumb wheel for Audio Board
 
 
 Todo

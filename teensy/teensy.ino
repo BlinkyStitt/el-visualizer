@@ -18,13 +18,16 @@
 #define FFT_IGNORED_BINS 1  // skip the first bin
 #define FFT_MAX_BINS 127
 #define MAX_OFF_MS 5000
+#define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
+#define DEFAULT_OUTPUTS 6
+#define DEFAULT_MORSE_STRING "HELLO WORLD"
 // END you can customize these
 
 const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
 
 #define OUTPUT_ON 0x0
 #define OUTPUT_OFF 0x1
-#define OUTPUT_OFF_NEXT_ON 0x2
+#define OUTPUT_OFF_NEXT_OUTPUT 0x2
 
 #include <Audio.h>
 #include <AnalogPin.h>
@@ -42,25 +45,17 @@ AudioConnection          patchCord1(audioInput, audioOutput);
 AudioConnection          patchCord2(audioInput, myFFT);
 AudioControlSGTL5000     audioShield;
 AnalogPin                numOutputKnob(A1);
-Bounce                   outputSensitivityUpButton = Bounce(); 
-Bounce                   outputSensitivityDownButton = Bounce(); 
+Bounce                   outputSensitivityUpButton = Bounce();
+Bounce                   outputSensitivityDownButton = Bounce();
 
-// todo: write a program outside of this to translate ASCII into MorseCommands. no need to do that on the system
-//       http://www.kent-engineers.com/codespeed.htm
 struct MorseCommand {
   unsigned int checkTime;
   unsigned int outputAction;
 };
-MorseCommand morse_array[] = {
-  { 100, OUTPUT_ON },
-  { 200, OUTPUT_OFF },
-  { 300, OUTPUT_ON },
-  { 400, OUTPUT_OFF },
-  { 500, OUTPUT_OFF_NEXT_ON },
-  { 600, OUTPUT_OFF },
-};
-const unsigned int length_morse_array = 6;
+int morse_array_length = MAX_MORSE_ARRAY_LENGTH;
+MorseCommand morse_array[MAX_MORSE_ARRAY_LENGTH];
 const int numFftBinsWeCareAbout = 24;
+
 
 /*
    HELPER FUNCTIONS
@@ -94,13 +89,13 @@ void setup() {
 
   //audioShield.enhanceBassEnable();
   //audioShield.enhanceBass(1.0, -1.0, false, 5);  // todo: tune this
-  
+
   // bass, mid_bass, midrange, mid_treble, treble
   audioShield.eqSelect(GRAPHIC_EQUALIZER);
   audioShield.eqBands(-1.0, -0.10, 0, 0.10, 0.33);  // todo: tune this
 
   // todo: autoVolume?
-  
+
   myFFT.averageTogether(FFT_AVERAGE_TOGETHER);
 
   for (int i=0; i<MAX_OUTPUTS; i++) {
@@ -120,6 +115,7 @@ void setup() {
   SPI.setSCK(14);
   if (!(SD.begin(10))) {
     while (1) {
+      // todo: allow not having a SD card. just do the default string then
       Serial.println("Unable to access the SD card");
       delay(500);
     }
@@ -130,35 +126,56 @@ void setup() {
   // todo: support a directory with multiple text files and pick randomly
   File morseFile = SD.open("morse.txt", FILE_READ);
 
+  String morseString = "";
   if (morseFile) {
     // if the file is available, read it:
-    String morseString = "";
     while (morseFile.available()) {
       // todo: this is wrong, but im just testing
       morseString += (char)morseFile.read();
     }
     morseFile.close();
-    Serial.println(morseString);
-
     // TODO! do something to turn the morse code string into something we can easily use to blink
   } else {
     // if the file isn't open, pop up an error:
     Serial.println("error opening morse.txt");
+    morseString = DEFAULT_MORSE_STRING;
   }
 
+  Serial.print("morseString: ");
+  Serial.println(morseString);
+
+  // TODO! actually translate morseString into a list of on/off commands
+  // http://www.kent-engineers.com/codespeed.htm
+  morse_array[0].checkTime = 1000;
+  morse_array[0].outputAction = OUTPUT_ON;
+  morse_array[1].checkTime = 1000;
+  morse_array[1].outputAction = OUTPUT_OFF_NEXT_OUTPUT;
+  morse_array[2].checkTime = 1000;
+  morse_array[2].outputAction = OUTPUT_ON;
+  morse_array[3].checkTime = 1000;
+  morse_array[3].outputAction = OUTPUT_OFF_NEXT_OUTPUT;
+  morse_array[4].checkTime = 1000;
+  morse_array[4].outputAction = OUTPUT_ON;
+  morse_array[5].checkTime = 1000;
+  morse_array[5].outputAction = OUTPUT_OFF_NEXT_OUTPUT;
+  morse_array_length = 6;
+
   audioShield.unmuteHeadphone();  // for debugging
+
+  // todo: is this enough?
+  randomSeed(analogRead(0));
 
   // give things some time to start
   // todo: not sure if this is actually needed
   delay(500);
 }
 
+
 elapsedMillis blinkTime = 0;
-int blinkOutput = OUTPUT_A, numOutputs = 6;
-float outputSensitivity = 0.025;
+int blinkOutput = OUTPUT_A, numOutputs = DEFAULT_OUTPUTS, morseOutputId = random(numOutputs);
+float outputSensitivity = 1.025;  // debugging the morse code
 bool outputSensitivityUpButtonState, outputSensitivityDownButtonState = false;
 unsigned long outputSensitivityUpButtonPressTimeStamp, outputSensitivityDownButtonPressTimeStamp;
-
 
 
 void loop() {
@@ -223,7 +240,7 @@ void loop() {
   }
   */
 
-  if (myFFT.available()) {    
+  if (outputSensitivity < 1 && myFFT.available()) {
     // configure number of fft bins to read
     /*
     // we have 128 bins total, but the first and the most all of the top are worthless. andy uses 10%
@@ -300,10 +317,56 @@ void loop() {
 
   // TODO! if no lights are on, blink in morse code
   if (blinkTime < MAX_OFF_MS) {
-    ; // do nothing. leave the lights off for up to MAX_OFF_MS seconds
-  } else {
-    unsigned long checkTime = blinkTime - MAX_OFF_MS;
+    ; // do nothing. leave the lights as they were for up to MAX_OFF_MS seconds
 
+    // todo: remove this delay and instead make sure lights stay on for a minimum amount of time
+    delay(200);
+  } else {
+    unsigned long checkTime = MAX_OFF_MS;
+
+    bool morse_command_found = false;
+
+    for (int i = 0; i < morse_array_length; i++) {
+      MorseCommand morse_command = morse_array[i];
+      checkTime = checkTime + morse_command.checkTime;
+      if (blinkTime < checkTime) {
+        morse_command_found = true;
+        /*
+        Serial.print(blinkTime);
+        Serial.print(" < ");
+        Serial.print(checkTime);
+        Serial.println();
+        */
+        if (morse_command.outputAction == OUTPUT_ON) {
+          digitalWrite(morseOutputId, HIGH);
+        } else if (morse_command.outputAction == OUTPUT_OFF) {
+          digitalWrite(morseOutputId, LOW);
+        } else {
+          // make sure the wire is off
+          digitalWrite(morseOutputId, LOW);
+          // turn on a random wire
+          // TODO: should we allow doing random or next?
+          // morseOutputId = random(numOutputs);
+          // TODO: this is wrong! this advances multiple times! we need to make sure this only happens once!
+          delay(1000);
+          morseOutputId = (morseOutputId + 1 ) % numOutputs;
+          Serial.print("New morseOutputId: ");
+          Serial.println(morseOutputId); 
+        }
+        break;
+      }
+    }
+
+    if (not morse_command_found) {
+      // we hit the end of the loop
+      // reset blink so we start at the beginning of the message
+      Serial.println("Looping morse code message...");
+      blinkTime = MAX_OFF_MS;
+      // blink on a new wire
+      // morseOutputId = random(numOutputs);
+    }
+
+    /*
     // blink for 1/4 of each second
     // todo: blink morse code
     if (checkTime < 2000) {
@@ -324,9 +387,7 @@ void loop() {
       // reset blinkTime to the point where we will keep blinking if no inputs are HIGH
       blinkTime = MAX_OFF_MS;
     }
+    */
   }
-
-  // todo: remove this delay and instead make sure lights stay on for a minimum amount of time
-  delay(200);
 }
 

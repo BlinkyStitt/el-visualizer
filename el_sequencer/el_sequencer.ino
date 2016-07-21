@@ -15,7 +15,7 @@
 #define OUTPUT_F 7
 #define OUTPUT_G 8
 #define OUTPUT_H 9
-#define MAX_OFF_MS 5000
+#define MAX_OFF_MS 7000
 const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, INPUT_F, INPUT_G, INPUT_H};
 const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
 
@@ -45,7 +45,7 @@ void loop() {
     numOutputs = MAX_WIRES;
   }
   // todo: have a button to lock this? or maybe a button for more or less. instead of a pot that can bounce around a bit
-  
+
   for (int i=0; i<MAX_WIRES; i++){
     if (digitalRead(inputPins[i])) {
       digitalWrite(outputPins[i], HIGH);
@@ -84,4 +84,3 @@ void loop() {
     }
   }
 }
-
