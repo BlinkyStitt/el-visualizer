@@ -7,6 +7,7 @@
 #define INPUT_F 15  // TODO! real input pin
 #define INPUT_G 16  // TODO! real input pin
 #define INPUT_H 17  // TODO! real input pin
+#define INPUT_NUM_OUTPUTS A1  // TODO! real analog input pin
 #define OUTPUT_A 2
 #define OUTPUT_B 3
 #define OUTPUT_C 4
@@ -19,15 +20,13 @@
 const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, INPUT_F, INPUT_G, INPUT_H};
 const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
 
-#include <AnalogPin.h>
-
-AnalogPin                numOutputKnob(A1);  // TODO! real input pin
-
 void setup() {
   for (int i=0; i<MAX_WIRES; i++) {
     pinMode(inputPins[i], INPUT);
     pinMode(outputPins[i], OUTPUT);
   }
+
+  pinMode(INPUT_NUM_OUTPUTS, INPUT);  // TODO! real input pin
 
   randomSeed(analogRead(0));
 }
@@ -38,7 +37,7 @@ unsigned int blinkDuration = random(250, 500);   // keep this less than 1000
 
 void loop() {
   // configure number of outputs
-  int numOutputs = (int)numOutputKnob.read(1) / (1024 / MAX_WIRES) + 1; // A1 (knob on audio board. pin 15) 0-1023. todo: tune this divisor
+  int numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS) / (1024 / MAX_WIRES) + 1; // A1 (knob on audio board. pin 15) 0-1023. todo: tune this divisor
   if (numOutputs < 1) {
     numOutputs = 1;
   } else if (numOutputs > MAX_WIRES) {
@@ -62,8 +61,7 @@ void loop() {
   } else {
     unsigned long checkTime = blinkTime - MAX_OFF_MS;
 
-    // blink for 1/4 to 1/2 of each second
-    // TODO! make this random?
+    // blink for 1/4 to 3/4 of each second
     if (checkTime < blinkDuration) {
       // turn the EL wire is on
       digitalWrite(outputPins[blinkOutput], HIGH);
@@ -75,12 +73,12 @@ void loop() {
       digitalWrite(outputPins[blinkOutput], LOW);
 
       // pick a random wire for the next blink
-      blinkOutput = random(MAX_WIRES);
+      blinkOutput = random(numOutputs);
 
       // reset blinkTime to the point where we will keep blinking if no inputs are HIGH
       blinkTime = MAX_OFF_MS;
       // blink the next wire for a random amount of time
-      blinkDuration = random(250, 500);
+      blinkDuration = random(250, 750);
     }
   }
 }
