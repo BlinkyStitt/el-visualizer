@@ -1,5 +1,7 @@
 **Under Construction**
 
+Demo Video: https://www.youtube.com/watch?v=fih1qalJm8M
+
 Control 1-8 el wires with the sound around you.
 
 If there is no sound around you for 5 seconds, it reads `morse.txt` off an SD card and blinks that on random wires instead.
