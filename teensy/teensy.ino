@@ -5,6 +5,8 @@
 //
 
 // you can customize these
+#define BUTTON_HOLD_MS 200
+#define BUTTON_INTERVAL 20
 #define MAX_OUTPUTS 8
 #define OUTPUT_A 0
 #define OUTPUT_B 1
@@ -14,7 +16,7 @@
 #define OUTPUT_F 5
 #define OUTPUT_G 8
 #define OUTPUT_H 20
-#define INPUT_NUM_OUTPUTS 15
+#define INPUT_NUM_OUTPUTS_KNOB 15
 #define INPUT_SENSITIVITY_DOWN 16
 #define INPUT_SENSITIVITY_UP 17
 #define FFT_AVERAGE_TOGETHER 8  // todo: tune this. higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
@@ -25,6 +27,7 @@
 #define DEFAULT_OUTPUTS 6
 #define DEFAULT_MORSE_STRING "HELLO WORLD"
 
+const int minimumOnMs = 200;
 // http://www.kent-engineers.com/codespeed.htm
 const int morseDitMs = 250;
 const int morseDahMs = morseDitMs * 3;
@@ -78,6 +81,7 @@ void printNumber(float n, float minimum = 0.008) {
 }
 
 int morseDit(MorseCommand morse_array[], int i) {
+  Serial.print('.');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDitMs;  // todo: tune this and make it a define
   morse_array[i].outputAction = OUTPUT_ON;
@@ -86,6 +90,7 @@ int morseDit(MorseCommand morse_array[], int i) {
 }
 
 int morseDah(MorseCommand morse_array[], int i) {
+  Serial.print('-');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDahMs; // todo: tune this and make it a define
   morse_array[i].outputAction = OUTPUT_ON;
@@ -102,6 +107,7 @@ int morse_element_space(MorseCommand morse_array[], int i) {
 }
 
 int morse_word_space(MorseCommand morse_array[], int i) {
+  Serial.print(" / ");
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseWordSpaceMs; // todo: tune this and make it a define
   morse_array[i].outputAction = OUTPUT_OFF_NEXT_OUTPUT;
@@ -142,15 +148,15 @@ void setup() {
   }
 
   // setup num_outputs knob
-  pinMode(INPUT_NUM_OUTPUTS, INPUT);
+  pinMode(INPUT_NUM_OUTPUTS_KNOB, INPUT);
 
   // setup output sensitivity buttons
   pinMode(INPUT_SENSITIVITY_DOWN, INPUT_PULLUP);
   outputSensitivityDownButton.attach(INPUT_SENSITIVITY_DOWN);
-  outputSensitivityDownButton.interval(15);
+  outputSensitivityDownButton.interval(BUTTON_INTERVAL);
   pinMode(INPUT_SENSITIVITY_UP, INPUT_PULLUP);
   outputSensitivityUpButton.attach(INPUT_SENSITIVITY_UP);
-  outputSensitivityUpButton.interval(15);
+  outputSensitivityUpButton.interval(BUTTON_INTERVAL);
 
   // read text off the SD card and translate it into morse code
   SPI.setMOSI(7);
@@ -412,8 +418,10 @@ void setup() {
     }
 
     // todo: is this right?
+    Serial.print(' ');
     morse_array_length = morse_element_space(morse_array, morse_array_length);
   }
+  Serial.println();
 
   Serial.print("morse array length: ");
   Serial.println(morse_array_length);
@@ -431,18 +439,20 @@ void setup() {
 }
 
 
-elapsedMillis blinkTime = 0;
+elapsedMillis nowMs = 0;
 int blinkOutput = OUTPUT_A, numOutputs = DEFAULT_OUTPUTS, morseOutputId = random(numOutputs);
-float outputSensitivity = 1.025;  // debugging the morse code
+float outputSensitivity = 0.050;
 bool outputSensitivityUpButtonState, outputSensitivityDownButtonState = false;
 unsigned long outputSensitivityUpButtonPressTimeStamp, outputSensitivityDownButtonPressTimeStamp;
+unsigned long lastOnMs;
+unsigned long lastOnMsArray[MAX_OUTPUTS];
 
 
 void loop() {
   // configure number of outputs
   // todo: have one pin based on motion sensor
 
-  numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS) / (1024 / MAX_OUTPUTS) + 1;
+  numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
 
   // todo: too much copypasta in this
   if (outputSensitivityDownButton.update()) {
@@ -457,7 +467,7 @@ void loop() {
       outputSensitivityDownButtonState = false;
     }
   } else if (outputSensitivityDownButtonState) {
-    if (millis() - outputSensitivityDownButtonPressTimeStamp >= 50) {
+    if (millis() - outputSensitivityDownButtonPressTimeStamp >= BUTTON_HOLD_MS) {
       Serial.println("Output sensitivity down button held down");
       outputSensitivityDownButtonPressTimeStamp = millis();
       outputSensitivity = outputSensitivity - 0.002;  // todo: ramp this up
@@ -478,7 +488,7 @@ void loop() {
       outputSensitivityUpButtonState = false;
     }
   } else if (outputSensitivityUpButtonState) {
-    if (millis() - outputSensitivityUpButtonPressTimeStamp >= 50) {
+    if (millis() - outputSensitivityUpButtonPressTimeStamp >= BUTTON_HOLD_MS) {
       Serial.println("Output sensitivity up button held down");
       outputSensitivityUpButtonPressTimeStamp = millis();
       outputSensitivity = outputSensitivity + 0.002;    // todo: ramp this up
@@ -487,8 +497,6 @@ void loop() {
       }
     }
   }
-
-  // todo: configure numFftBinsWeCareAbout?
 
   if (outputSensitivity < 1 && myFFT.available()) {
     int expectedBinsPerOutput = numFftBinsWeCareAbout / numOutputs;
@@ -539,11 +547,14 @@ void loop() {
         // todo: save the time that we turned the light on
         digitalWrite(outputPins[outputId], HIGH);
 
-        // reset blinkTime any time lights turn on
-        blinkTime = 0;
+        // save the time this output turned on
+        lastOnMs = nowMs;
+        lastOnMsArray[outputId] = lastOnMs;
       } else {
-        // todo: only turn the light off if it has been long enough
-        digitalWrite(outputPins[outputId], LOW);
+        if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
+          // the output has been on for at least minimumOnMs. turn it off
+          digitalWrite(outputPins[outputId], LOW);
+        }
       }
 
       outputStartBin = nextOutputStartBin;
@@ -553,15 +564,8 @@ void loop() {
     Serial.println();
   }
 
-  if (blinkTime < MAX_OFF_MS) {
-    ; // do nothing. leave the lights as they were for up to MAX_OFF_MS seconds
-
-    Serial.print("AudioMemoryUsageMax: ");
-    Serial.println(AudioMemoryUsageMax());
-
-    // todo: remove this delay and instead make sure lights stay on for a minimum amount of time
-    delay(200);
-  } else {
+  if (nowMs - lastOnMs >= MAX_OFF_MS) {
+    // no lights have been turned on for at least MAX_OFF_MS
     unsigned long checkMs = MAX_OFF_MS;
 
     bool morse_command_found = false;
@@ -569,9 +573,9 @@ void loop() {
     for (int i = 0; i < morse_array_length; i++) {
       MorseCommand morse_command = morse_array[i];
       checkMs = checkMs + morse_command.checkMs;
-      if (blinkTime < checkMs) {
+      if (nowMs < checkMs) {
         /*
-        Serial.print(blinkTime);
+        Serial.print(nowMs);
         Serial.print(" < ");
         Serial.print(checkMs);
         Serial.println();
@@ -604,10 +608,21 @@ void loop() {
 
     if (not morse_command_found) {
       // we hit the end of the loop
-      // reset blink so we start at the beginning of the message
+      // reset time so we start at the beginning of the message
       Serial.println("Loop morse code message...");
-      blinkTime = MAX_OFF_MS;
+      lastOnMs = 0;
+      nowMs = MAX_OFF_MS;
+
+      /*
+      // reset the lastOnMsArray loop. todo: we might not need this
+      for (int i = 0; i < MAX_OUTPUTS; i++) {
+        lastOnMsArray[i] = 0;
+      }
+      */
     }
+  } else {
+    // todo: print this less often.
+    //Serial.print("AudioMemoryUsageMax: ");
+    //Serial.println(AudioMemoryUsageMax());
   }
 }
-
