@@ -1,13 +1,12 @@
-#define MAX_WIRES 8
-#define INPUT_A 10  // TODO! real input pin
-#define INPUT_B 11  // TODO! real input pin
-#define INPUT_C 12  // TODO! real input pin
-#define INPUT_D 13  // TODO! real input pin
-#define INPUT_E 14  // TODO! real input pin
-#define INPUT_F 15  // TODO! real input pin
-#define INPUT_G 16  // TODO! real input pin
-#define INPUT_H 17  // TODO! real input pin
-#define INPUT_NUM_OUTPUTS A1  // TODO! real analog input pin
+#define MAX_WIRES 4
+#define INPUT_A A2
+#define INPUT_B A3
+#define INPUT_C A4
+#define INPUT_D A5
+//#define INPUT_E ??  // 
+//#define INPUT_F ??  // 
+//#define INPUT_G ??  // 
+//#define INPUT_H ??  // 
 #define OUTPUT_A 2
 #define OUTPUT_B 3
 #define OUTPUT_C 4
@@ -17,18 +16,23 @@
 #define OUTPUT_G 8
 #define OUTPUT_H 9
 #define MAX_OFF_MS 7000
-const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, INPUT_F, INPUT_G, INPUT_H};
-const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D}; //, INPUT_E, INPUT_F, INPUT_G, INPUT_H};
+const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D}; //, OUTPUT_E}; OUTPUT_F, OUTPUT_G, OUTPUT_H};
+
+#include <elapsedMillis.h>
 
 void setup() {
+  Serial.begin(9600);  // TODO! disable this on production build
+
   for (int i=0; i<MAX_WIRES; i++) {
-    pinMode(inputPins[i], INPUT);
+    pinMode(inputPins[i], INPUT);   // INPUT_PULLUP?
     pinMode(outputPins[i], OUTPUT);
   }
 
-  pinMode(INPUT_NUM_OUTPUTS, INPUT);  // TODO! real input pin
+  randomSeed(analogRead(A0));
 
-  randomSeed(analogRead(0));
+  Serial.println("Starting in 1 second...");
+  delay(1000);
 }
 
 elapsedMillis blinkTime = 0;
@@ -36,26 +40,23 @@ unsigned int blinkOutput = OUTPUT_A;
 unsigned int blinkDuration = random(250, 500);   // keep this less than 1000
 
 void loop() {
-  // configure number of outputs
-  int numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS) / (1024 / MAX_WIRES) + 1; // A1 (knob on audio board. pin 15) 0-1023. todo: tune this divisor
-  if (numOutputs < 1) {
-    numOutputs = 1;
-  } else if (numOutputs > MAX_WIRES) {
-    numOutputs = MAX_WIRES;
-  }
-  // todo: have a button to lock this? or maybe a button for more or less. instead of a pot that can bounce around a bit
-
   for (int i=0; i<MAX_WIRES; i++){
     if (digitalRead(inputPins[i])) {
       digitalWrite(outputPins[i], HIGH);
+
+      Serial.print("  X  ");
 
       // reset blinkTime any time lights turn on
       blinkTime = 0;
     } else {
       digitalWrite(outputPins[i], LOW);
+
+      Serial.print("     ");
     }
   }
+  Serial.println();
 
+  /*
   if (blinkTime < MAX_OFF_MS) {
     ; // do nothing. leave the lights off for up to MAX_OFF_MS seconds
   } else {
@@ -81,4 +82,5 @@ void loop() {
       blinkDuration = random(250, 750);
     }
   }
+  */
 }

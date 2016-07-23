@@ -27,7 +27,7 @@
 #define DEFAULT_OUTPUTS 6
 #define DEFAULT_MORSE_STRING "HELLO WORLD"
 
-const int minimumOnMs = 200;
+const int minimumOnMs = 250;
 // http://www.kent-engineers.com/codespeed.htm
 const int morseDitMs = 250;
 const int morseDahMs = morseDitMs * 3;
@@ -115,9 +115,11 @@ int morse_word_space(MorseCommand morse_array[], int i) {
   return i;
 }
 
+/*
 MorseCommand[] string2morse(String str) {
   // todo: move all the morse stuff in setup up to here
 }
+*/
 
 /*
    END HELPER FUNCTIONS
@@ -435,8 +437,6 @@ void setup() {
   // todo: is this enough?
   randomSeed(analogRead(0));
 
-  // give things some time to start
-  // todo: not sure if this is actually needed
   Serial.println("Starting in 1 second...");
   delay(1000);
 }
@@ -444,7 +444,7 @@ void setup() {
 
 elapsedMillis nowMs = 0;
 int blinkOutput = OUTPUT_A, numOutputs = DEFAULT_OUTPUTS, morseOutputId = random(numOutputs);
-float outputSensitivity = 0.050;
+float outputSensitivity = 0.020;
 bool outputSensitivityUpButtonState, outputSensitivityDownButtonState = false;
 unsigned long outputSensitivityUpButtonPressTimeStamp, outputSensitivityDownButtonPressTimeStamp;
 unsigned long lastOnMs;
@@ -454,10 +454,17 @@ int lastMorseId = 0;
 
 void loop() {
   // configure number of outputs
-  // todo: have one pin based on motion sensor
-
+  int oldNumOutputs = numOutputs;
   numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
+  if (oldNumOutputs - numOutputs > 0) {
+    // we turned numOutputs down, make sure we turn the outputs off to match
+    for (int i=numOutputs + 1; i<MAX_OUTPUTS; i++) {
+      digitalWrite(outputPins[i], LOW);
+    }
+  }
+  // TODO! if numOutputs != oldNumOutputs, blink all the wires numOutput times
 
+  // configure sensitivity
   // todo: too much copypasta in this
   if (outputSensitivityDownButton.update()) {
     if (outputSensitivityDownButton.fell()) {
@@ -474,7 +481,7 @@ void loop() {
     if (millis() - outputSensitivityDownButtonPressTimeStamp >= BUTTON_HOLD_MS) {
       Serial.println("Output sensitivity down button held down");
       outputSensitivityDownButtonPressTimeStamp = millis();
-      outputSensitivity = outputSensitivity - 0.002;  // todo: ramp this up
+      outputSensitivity = outputSensitivity - 0.003;  // todo: ramp this up
       if (outputSensitivity < -0.001) {
         outputSensitivity = -0.001;
       }
@@ -495,7 +502,7 @@ void loop() {
     if (millis() - outputSensitivityUpButtonPressTimeStamp >= BUTTON_HOLD_MS) {
       Serial.println("Output sensitivity up button held down");
       outputSensitivityUpButtonPressTimeStamp = millis();
-      outputSensitivity = outputSensitivity + 0.002;    // todo: ramp this up
+      outputSensitivity = outputSensitivity + 0.003;    // todo: ramp this up
       if (outputSensitivity > 1.001) {
         outputSensitivity = 1.001;
       }
