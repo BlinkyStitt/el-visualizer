@@ -55,7 +55,7 @@ AudioAnalyzeFFT256       myFFT;
 AudioConnection          patchCord1(audioInput, audioOutput);
 AudioConnection          patchCord2(audioInput, myFFT);
 AudioControlSGTL5000     audioShield;
-Bounce                   outputSensitivityUpButton = Bounce();
+Bounce                   outputSensitivityUpButton = Bounce();    // todo: sensitivity up actually means less sensitive. name this better
 Bounce                   outputSensitivityDownButton = Bounce();
 
 struct MorseCommand {
@@ -153,7 +153,7 @@ void setup() {
     pinMode(outputPins[i], OUTPUT);
   }
 
-  // setup num_outputs knob
+  // setup numOutputs knob
   pinMode(INPUT_NUM_OUTPUTS_KNOB, INPUT);
 
   // setup output sensitivity buttons
@@ -165,34 +165,26 @@ void setup() {
   outputSensitivityUpButton.interval(BUTTON_INTERVAL);
 
   // read text off the SD card and translate it into morse code
+  String morseString = "";
   SPI.setMOSI(7);
   SPI.setSCK(14);
-  if (!(SD.begin(10))) {
-    while (1) {
-      // todo: allow not having a SD card. just do the default string then
-      Serial.println("Unable to access the SD card");
-      delay(500);
+  if (SD.begin(10)) {
+    // todo: support a directory with multiple text files?
+    File morseFile = SD.open("morse.txt", FILE_READ);
+    if (morseFile) {
+      Serial.println("Reading morse.txt...");
+      // if the file is available, read it:
+      while (morseFile.available()) {
+        // todo: this is wrong, but im just testing
+        morseString += (char)morseFile.read();
+      }
+      morseFile.close();
     }
   }
 
-  // open the file. note that only one file can be open at a time,
-  // so you have to close this one before opening another.
-  // todo: support a directory with multiple text files and pick randomly
-  File morseFile = SD.open("morse.txt", FILE_READ);
-
-  String morseString = "";
-  if (morseFile) {
-    Serial.println("Reading morse.txt...");
-    // if the file is available, read it:
-    while (morseFile.available()) {
-      // todo: this is wrong, but im just testing
-      morseString += (char)morseFile.read();
-    }
-    morseFile.close();
-    // TODO! do something to turn the morse code string into something we can easily use to blink
-  } else {
+  if (morseString == "") {
     // if the file isn't open, pop up an error:
-    Serial.println("Unable to open morse.txt...");
+    Serial.println("No morse.txt...");
     morseString = DEFAULT_MORSE_STRING;
   }
 
@@ -444,12 +436,13 @@ void setup() {
 
 elapsedMillis nowMs = 0;
 int blinkOutput = OUTPUT_A, numOutputs = DEFAULT_OUTPUTS, morseOutputId = random(numOutputs);
-float outputSensitivity = 0.020;
+float outputSensitivity = 0.025;
 bool outputSensitivityUpButtonState, outputSensitivityDownButtonState = false;
 unsigned long outputSensitivityUpButtonPressTimeStamp, outputSensitivityDownButtonPressTimeStamp;
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
 int lastMorseId = 0;
+int outputStates[MAX_OUTPUTS];
 
 
 void loop() {
@@ -555,7 +548,7 @@ void loop() {
 
       // turn the light on if outputLevel > outputSensitivity. off otherwise
       if (outputLevel > outputSensitivity) {
-        digitalWrite(outputPins[outputId], HIGH);
+        outputStates[outputId] = HIGH;
 
         // save the time this output turned on. morse code waits for this to be old
         lastOnMs = nowMs;
@@ -567,7 +560,8 @@ void loop() {
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
           // the output has been on for at least minimumOnMs. turn it off
-          digitalWrite(outputPins[outputId], LOW);
+          // don't actually turn off here because that might break the morse code
+          outputStates[outputId] = LOW;
         }
       }
 
@@ -578,7 +572,13 @@ void loop() {
     Serial.println();
   }
 
-  if (nowMs - lastOnMs >= MAX_OFF_MS) {
+  if (nowMs - lastOnMs < MAX_OFF_MS) {
+    // we turned a light on recently. send output states to the wires
+    for (int i=0; i<numOutputs; i++) {
+      digitalWrite(outputPins[i], outputStates[i]);
+    }
+
+  } else {
     // no lights have been turned on for at least MAX_OFF_MS
     unsigned long checkMs = MAX_OFF_MS;
 
@@ -646,9 +646,5 @@ void loop() {
       }
       */
     }
-  } else {
-    // todo: print this less often.
-    //Serial.print("AudioMemoryUsageMax: ");
-    //Serial.println(AudioMemoryUsageMax());
   }
 }
