@@ -115,6 +115,10 @@ int morse_word_space(MorseCommand morse_array[], int i) {
   return i;
 }
 
+MorseCommand[] string2morse(String str) {
+  // todo: move all the morse stuff in setup up to here
+}
+
 /*
    END HELPER FUNCTIONS
 */
@@ -544,12 +548,15 @@ void loop() {
 
       // turn the light on if outputLevel > outputSensitivity. off otherwise
       if (outputLevel > outputSensitivity) {
-        // todo: save the time that we turned the light on
         digitalWrite(outputPins[outputId], HIGH);
 
-        // save the time this output turned on
+        // save the time this output turned on. morse code waits for this to be old
         lastOnMs = nowMs;
-        lastOnMsArray[outputId] = lastOnMs;
+
+        // save the time we turned on unless we are in the minimumOnMs window of a previous on
+        if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
+          lastOnMsArray[outputId] = lastOnMs;
+        }
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
           // the output has been on for at least minimumOnMs. turn it off
