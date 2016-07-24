@@ -1,12 +1,38 @@
 // control for Bryan's Jacket with a configurable number of EL wires
 //
-// when it is quiet, lights flash out morse code BRYAN
+// when it is quiet, lights flash out morse code
 // when it is loud, lights flash with the music
 //
 
-// you can customize these
+/*
+ * you can customize these
+ *
+ * todo: define or const?
+ */
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
+#define INPUT_NUM_OUTPUTS_KNOB 15
+#define FFT_AVERAGE_TOGETHER 8  // higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
+#define FFT_IGNORED_BINS 1  // skip the first bin. it is really noisy
+#define MAX_OFF_MS 5000
+#define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
+#define MINIMUM_INPUT_SENSITIVITY 0.04  // todo: tune this
+#define MINIMUM_INPUT_RANGE 0.90  // activate outputs on sounds that are at least 70% as loud as the loudest sounds
+#define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
+
+const int minimumOnMs = 200;
+const int numFftBinsWeCareAbout = 24;  // only the bottom 10-20% of the FFT is worth visualizing
+
+// inspired by http://www.kent-engineers.com/codespeed.htm
+const int morseDitMs = 250;
+const int morseDahMs = morseDitMs * 3;
+const int morseElementSpaceMs = 825;  // 10% longer than a dah
+const int morseWordSpaceMs = morseElementSpaceMs * 3;
+/*
+ * END you can customize these
+ */
+
+#define FFT_MAX_BINS 127
 #define MAX_OUTPUTS 8
 #define OUTPUT_A 0
 #define OUTPUT_B 1
@@ -16,33 +42,13 @@
 #define OUTPUT_F 5
 #define OUTPUT_G 8
 #define OUTPUT_H 20
-#define INPUT_NUM_OUTPUTS_KNOB 15
-#define INPUT_SENSITIVITY_DOWN 16
-#define INPUT_SENSITIVITY_UP 17
-#define FFT_AVERAGE_TOGETHER 8  // todo: tune this. higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
-#define FFT_IGNORED_BINS 1  // skip the first bin
-#define FFT_MAX_BINS 127
-#define MAX_OFF_MS 5000
-#define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define DEFAULT_OUTPUTS 6
-#define DEFAULT_MORSE_STRING "HELLO WORLD"
-
-const int minimumOnMs = 250;
-// http://www.kent-engineers.com/codespeed.htm
-const int morseDitMs = 250;
-const int morseDahMs = morseDitMs * 3;
-const int morseElementSpaceMs = 825;  // 10% longer than a dah
-const int morseWordSpaceMs = morseElementSpaceMs * 3;
-// END you can customize these
-
-const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
-
 #define OUTPUT_ON 0
 #define OUTPUT_OFF 1
 #define OUTPUT_OFF_NEXT_OUTPUT 2
 
+const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+
 #include <Audio.h>
-#include <Bounce2.h>
 #include <elapsedMillis.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -55,8 +61,6 @@ AudioAnalyzeFFT256       myFFT;
 AudioConnection          patchCord1(audioInput, audioOutput);
 AudioConnection          patchCord2(audioInput, myFFT);
 AudioControlSGTL5000     audioShield;
-Bounce                   outputSensitivityUpButton = Bounce();    // todo: sensitivity up actually means less sensitive. name this better
-Bounce                   outputSensitivityDownButton = Bounce();
 
 struct MorseCommand {
   unsigned int checkMs;
@@ -64,7 +68,6 @@ struct MorseCommand {
 };
 int morse_array_length = MAX_MORSE_ARRAY_LENGTH;
 MorseCommand morse_array[MAX_MORSE_ARRAY_LENGTH];
-const int numFftBinsWeCareAbout = 24;
 
 
 /*
@@ -155,14 +158,6 @@ void setup() {
 
   // setup numOutputs knob
   pinMode(INPUT_NUM_OUTPUTS_KNOB, INPUT);
-
-  // setup output sensitivity buttons
-  pinMode(INPUT_SENSITIVITY_DOWN, INPUT_PULLUP);
-  outputSensitivityDownButton.attach(INPUT_SENSITIVITY_DOWN);
-  outputSensitivityDownButton.interval(BUTTON_INTERVAL);
-  pinMode(INPUT_SENSITIVITY_UP, INPUT_PULLUP);
-  outputSensitivityUpButton.attach(INPUT_SENSITIVITY_UP);
-  outputSensitivityUpButton.interval(BUTTON_INTERVAL);
 
   // read text off the SD card and translate it into morse code
   String morseString = "";
@@ -435,14 +430,19 @@ void setup() {
 
 
 elapsedMillis nowMs = 0;
-int blinkOutput = OUTPUT_A, numOutputs = DEFAULT_OUTPUTS, morseOutputId = random(numOutputs);
-float outputSensitivity = 0.025;
-bool outputSensitivityUpButtonState, outputSensitivityDownButtonState = false;
-unsigned long outputSensitivityUpButtonPressTimeStamp, outputSensitivityDownButtonPressTimeStamp;
+
+int blinkOutput = OUTPUT_A;
+int numOutputs = 1;
+int morseOutputId = random(numOutputs);
+
+float inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
+float loudestInputLevel = MINIMUM_INPUT_SENSITIVITY;
+
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
-int lastMorseId = 0;
 int outputStates[MAX_OUTPUTS];
+
+int lastMorseId = 0;
 
 
 void loop() {
@@ -455,68 +455,27 @@ void loop() {
       digitalWrite(outputPins[i], LOW);
     }
   }
-  // TODO! if numOutputs != oldNumOutputs, blink all the wires numOutput times
+  // TODO! if numOutputs != oldNumOutputs, blink all the wires numOutput times for easy setting
 
-  // configure sensitivity
-  // todo: too much copypasta in this
-  if (outputSensitivityDownButton.update()) {
-    if (outputSensitivityDownButton.fell()) {
-      Serial.println("down button pressed");
-      outputSensitivityDownButtonState = true;
-      outputSensitivity = outputSensitivity - 0.001;
-      if (outputSensitivity < -0.001) {
-        outputSensitivity = -0.001;
-      }
-    } else {
-      outputSensitivityDownButtonState = false;
-    }
-  } else if (outputSensitivityDownButtonState) {
-    if (millis() - outputSensitivityDownButtonPressTimeStamp >= BUTTON_HOLD_MS) {
-      Serial.println("Output sensitivity down button held down");
-      outputSensitivityDownButtonPressTimeStamp = millis();
-      outputSensitivity = outputSensitivity - 0.003;  // todo: ramp this up
-      if (outputSensitivity < -0.001) {
-        outputSensitivity = -0.001;
-      }
-    }
-  } else if (outputSensitivityUpButton.update()) {
-    if (outputSensitivityUpButton.fell()) {
-      Serial.println("Output sensitivity up button pressed");
-      outputSensitivityUpButtonState = true;
-      outputSensitivityUpButtonPressTimeStamp = millis();
-      outputSensitivity = outputSensitivity + 0.001;
-      if (outputSensitivity > 1.001) {
-        outputSensitivity = 1.001;
-      }
-    } else {
-      outputSensitivityUpButtonState = false;
-    }
-  } else if (outputSensitivityUpButtonState) {
-    if (millis() - outputSensitivityUpButtonPressTimeStamp >= BUTTON_HOLD_MS) {
-      Serial.println("Output sensitivity up button held down");
-      outputSensitivityUpButtonPressTimeStamp = millis();
-      outputSensitivity = outputSensitivity + 0.003;    // todo: ramp this up
-      if (outputSensitivity > 1.001) {
-        outputSensitivity = 1.001;
-      }
-    }
-  }
+  // parse FFT data
+  if (myFFT.available()) {
+    int numOutputBins, nextOutputStartBin, outputId = 0;
+    int outputStartBin = FFT_IGNORED_BINS;  // ignore the first FFT_IGNORED_BINS bins as they can be far too noisy. maybe the eq/filters can help tho?
 
-  if (outputSensitivity < 1 && myFFT.available()) {
     int expectedBinsPerOutput = numFftBinsWeCareAbout / numOutputs;
 
-    int numOutputBins, nextOutputStartBin, outputId = 0;
-    int outputStartBin = FFT_IGNORED_BINS;  // ignore bin 0. it is far too noisy. maybe the eq/filters can help tho?
+    inputSensitivity = loudestInputLevel * MINIMUM_INPUT_RANGE;
+
+    // todo: this should be a moving average instead
+    loudestInputLevel = MINIMUM_INPUT_SENSITIVITY / MINIMUM_INPUT_RANGE;  // reset to the minimum
 
     // DEBUGGING
     Serial.print(numFftBinsWeCareAbout);
     Serial.print(" FFT bins >");
-    Serial.print(outputSensitivity, 3);
+    Serial.print(inputSensitivity, 3);
     Serial.print(" across ");
     Serial.print(numOutputs);
-    Serial.print(" outputs (");
-    Serial.print(expectedBinsPerOutput);
-    Serial.print("):  ");
+    Serial.print(" outputs:  ");
     // END DEBUGGING
 
     while (outputStartBin < numFftBinsWeCareAbout + FFT_IGNORED_BINS) {
@@ -543,11 +502,20 @@ void loop() {
       Serial.print(numOutputBins);
       Serial.println(")");
       */
-      printNumber(outputLevel, outputSensitivity);
+      printNumber(outputLevel, inputSensitivity);
       // END DEBUGGING
 
-      // turn the light on if outputLevel > outputSensitivity. off otherwise
-      if (outputLevel > outputSensitivity) {
+      if (outputLevel > loudestInputLevel) {
+        loudestInputLevel = outputLevel;
+        /*
+        Serial.println();
+        Serial.print("New loudestInputLevel: ");
+        Serial.println(loudestInputLevel);
+        */
+      }
+
+      // turn the light on if outputLevel > inputSensitivity. off otherwise
+      if (outputLevel > inputSensitivity) {
         outputStates[outputId] = HIGH;
 
         // save the time this output turned on. morse code waits for this to be old
@@ -577,7 +545,6 @@ void loop() {
     for (int i=0; i<numOutputs; i++) {
       digitalWrite(outputPins[i], outputStates[i]);
     }
-
   } else {
     // no lights have been turned on for at least MAX_OFF_MS
     unsigned long checkMs = MAX_OFF_MS;
