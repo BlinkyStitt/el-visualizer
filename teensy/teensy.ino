@@ -16,7 +16,7 @@
 #define FFT_IGNORED_BINS 1  // skip the first bin. it is really noisy
 #define MAX_OFF_MS 5000
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define MINIMUM_INPUT_SENSITIVITY 0.04  // todo: tune this
+#define MINIMUM_INPUT_SENSITIVITY 0.03  // todo: tune this
 #define MINIMUM_INPUT_RANGE 0.90  // activate outputs on sounds that are at least 70% as loud as the loudest sounds
 #define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
 
@@ -506,6 +506,7 @@ void loop() {
       // END DEBUGGING
 
       if (outputLevel > loudestInputLevel) {
+        // TODO! average the input levels here. taking the loudest means that bass always dominates
         loudestInputLevel = outputLevel;
         /*
         Serial.println();
