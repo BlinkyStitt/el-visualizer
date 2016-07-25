@@ -16,7 +16,7 @@
 #define OUTPUT_F 7
 #define OUTPUT_G 8
 #define OUTPUT_H 9
-#define MAX_OFF_MS 7000
+#define MAX_OFF_MS 12000
 const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, INPUT_F}; //, INPUT_G, INPUT_H};
 const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F}; //, OUTPUT_G, OUTPUT_H};
 

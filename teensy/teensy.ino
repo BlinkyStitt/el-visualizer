@@ -12,17 +12,17 @@
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
 #define INPUT_NUM_OUTPUTS_KNOB 15
-#define EMA_ALPHA 0.1
+#define EMA_ALPHA 0.2
 #define FFT_AVERAGE_TOGETHER 8  // higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
 #define FFT_IGNORED_BINS 1  // skip the first X bins. They are really noisy
-#define MAX_OFF_MS 5000
+#define MAX_OFF_MS 10000
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define MINIMUM_INPUT_SENSITIVITY 0.020  // todo: make this a button that sets this to whatever the current volume is?
-#define MINIMUM_INPUT_RANGE 0.72  // activate outputs on sounds that are at least this % as loud as the loudest sound
+#define MINIMUM_INPUT_SENSITIVITY 0.050  // todo: make this a button that sets this to whatever the current volume is?
+#define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
 #define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
 
 const int minimumOnMs = 250;
-const int numFftBinsWeCareAbout = 24;  // only the bottom 10-20% of the FFT is worth visualizing
+const int numFftBinsWeCareAbout = 25;  // only the bottom 10-20% of the FFT is worth visualizing
 
 // inspired by http://www.kent-engineers.com/codespeed.htm
 const int morseDitMs = 250;
@@ -437,7 +437,7 @@ int numOutputs = 1;
 int morseOutputId = random(numOutputs);
 
 // Exponential Moving Average of each wire individually and then all the wires together
-float avgInputLevel[MAX_OUTPUTS];
+float avgInputLevel[MAX_OUTPUTS + 1];
 float lastLoudestLevel = 0;
 
 unsigned long lastOnMs;
@@ -467,7 +467,7 @@ void loop() {
     int expectedBinsPerOutput = numFftBinsWeCareAbout / numOutputs;
 
     // set the overall sensitivity based on how loud the previous inputs were
-    float inputSensitivity = lastLoudestLevel;  // TODO! this is wrong. * MINIMUM_INPUT_RANGE;
+    float inputSensitivity = lastLoudestLevel * MINIMUM_INPUT_RANGE;
     if (inputSensitivity < MINIMUM_INPUT_SENSITIVITY) {
       inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
     }
@@ -479,9 +479,12 @@ void loop() {
     Serial.print(inputSensitivity, 3);
     Serial.print(" across ");
     Serial.print(numOutputs);
-    Serial.print(" outputs:  ");
+    Serial.print(" outputs (");
+    Serial.print(avgInputLevel[MAX_OUTPUTS]);
+    Serial.print(" avg): ");
     // END DEBUGGING
 
+    float inputLevelAccumulator = 0;
     while (outputStartBin < numFftBinsWeCareAbout + FFT_IGNORED_BINS) {
       // todo: do we actually want even output sizes? maybe the first bins should be smaller
       if (outputId < numOutputs - 1) {
@@ -505,10 +508,9 @@ void loop() {
       }
 
       if (avgInputLevel[outputId] > inputSensitivity) {
-        outputLevel -= avgInputLevel[outputId] * 1.10;  // go numb to loud sounds. todo: tune this
-      } else {
-        outputLevel += avgInputLevel[outputId] * 0.25;  // give quiet sounds a boost. todo: tune this
+        outputLevel -= avgInputLevel[outputId] * 1.0;  // go numb to loud sounds. todo: tune this
       }
+      inputLevelAccumulator += outputLevel;
 
       /*
       // DEBUGGING
@@ -520,19 +522,24 @@ void loop() {
       Serial.print(numOutputBins);
       Serial.println(")");
       */
-      printNumber(outputLevel, inputSensitivity);
+      printNumber(outputLevel - inputSensitivity, 0);
       // END DEBUGGING
 
-      // turn the light on if outputLevel > inputSensitivity. off otherwise
+      // turn the light on if outputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
       if (outputLevel > inputSensitivity) {
-        outputStates[outputId] = HIGH;
+        if (avgInputLevel[MAX_OUTPUTS] < inputSensitivity) {    // TODO! this is probably wrong
+          // we have a loud sound, but the other outputs are quiet, so ignore it
+          ;  //Serial.println("Ignored...");
+        } else {
+          outputStates[outputId] = HIGH;
 
-        // save the time this output turned on. morse code waits for this to be old
-        lastOnMs = nowMs;
+          // save the time this output turned on. morse code waits for this to be old
+          lastOnMs = nowMs;
 
-        // save the time we turned on unless we are in the minimumOnMs window of a previous on
-        if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
-          lastOnMsArray[outputId] = lastOnMs;
+          // save the time we turned on unless we are in the minimumOnMs window of a previous on
+          if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
+            lastOnMsArray[outputId] = lastOnMs;
+          }
         }
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
@@ -547,6 +554,8 @@ void loop() {
     }
 
     Serial.println();
+
+    avgInputLevel[MAX_OUTPUTS] += EMA_ALPHA * (inputLevelAccumulator - avgInputLevel[MAX_OUTPUTS]);   // todo: not sure about this
   }
 
   if (nowMs - lastOnMs < MAX_OFF_MS) {
