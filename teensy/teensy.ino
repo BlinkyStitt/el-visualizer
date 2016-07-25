@@ -12,15 +12,16 @@
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
 #define INPUT_NUM_OUTPUTS_KNOB 15
+#define EMA_ALPHA 0.1
 #define FFT_AVERAGE_TOGETHER 8  // higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
-#define FFT_IGNORED_BINS 1  // skip the first bin. it is really noisy
+#define FFT_IGNORED_BINS 1  // skip the first X bins. They are really noisy
 #define MAX_OFF_MS 5000
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define MINIMUM_INPUT_SENSITIVITY 0.03  // todo: tune this
-#define MINIMUM_INPUT_RANGE 0.90  // activate outputs on sounds that are at least 70% as loud as the loudest sounds
+#define MINIMUM_INPUT_SENSITIVITY 0.020  // todo: make this a button that sets this to whatever the current volume is?
+#define MINIMUM_INPUT_RANGE 0.72  // activate outputs on sounds that are at least this % as loud as the loudest sound
 #define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
 
-const int minimumOnMs = 200;
+const int minimumOnMs = 250;
 const int numFftBinsWeCareAbout = 24;  // only the bottom 10-20% of the FFT is worth visualizing
 
 // inspired by http://www.kent-engineers.com/codespeed.htm
@@ -146,7 +147,7 @@ void setup() {
 
   // bass, mid_bass, midrange, mid_treble, treble
   audioShield.eqSelect(GRAPHIC_EQUALIZER);
-  audioShield.eqBands(-1.0, -0.10, 0, 0.10, 0.33);  // todo: tune this
+  audioShield.eqBands(-1.0, -0.10, 0.10, 0.10, 0.33);  // todo: tune this
 
   // todo: autoVolume?
 
@@ -435,8 +436,9 @@ int blinkOutput = OUTPUT_A;
 int numOutputs = 1;
 int morseOutputId = random(numOutputs);
 
-float inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
-float loudestInputLevel = MINIMUM_INPUT_SENSITIVITY;
+// Exponential Moving Average of each wire individually and then all the wires together
+float avgInputLevel[MAX_OUTPUTS];
+float lastLoudestLevel = 0;
 
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
@@ -464,10 +466,12 @@ void loop() {
 
     int expectedBinsPerOutput = numFftBinsWeCareAbout / numOutputs;
 
-    inputSensitivity = loudestInputLevel * MINIMUM_INPUT_RANGE;
-
-    // todo: this should be a moving average instead
-    loudestInputLevel = MINIMUM_INPUT_SENSITIVITY / MINIMUM_INPUT_RANGE;  // reset to the minimum
+    // set the overall sensitivity based on how loud the previous inputs were
+    float inputSensitivity = lastLoudestLevel;  // TODO! this is wrong. * MINIMUM_INPUT_RANGE;
+    if (inputSensitivity < MINIMUM_INPUT_SENSITIVITY) {
+      inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
+    }
+    lastLoudestLevel = 0;
 
     // DEBUGGING
     Serial.print(numFftBinsWeCareAbout);
@@ -492,6 +496,20 @@ void loop() {
 
       // .read(x, y) gives us a sum of bins x through y so we divide to keep the average
       float outputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
+
+      // take an average of the true input
+      avgInputLevel[outputId] += EMA_ALPHA * (outputLevel - avgInputLevel[outputId]);   // todo: not sure about this
+
+      if (outputLevel > lastLoudestLevel) {
+        lastLoudestLevel = outputLevel;
+      }
+
+      if (avgInputLevel[outputId] > inputSensitivity) {
+        outputLevel -= avgInputLevel[outputId] * 1.10;  // go numb to loud sounds. todo: tune this
+      } else {
+        outputLevel += avgInputLevel[outputId] * 0.25;  // give quiet sounds a boost. todo: tune this
+      }
+
       /*
       // DEBUGGING
       Serial.print("Reading ");
@@ -504,16 +522,6 @@ void loop() {
       */
       printNumber(outputLevel, inputSensitivity);
       // END DEBUGGING
-
-      if (outputLevel > loudestInputLevel) {
-        // TODO! average the input levels here. taking the loudest means that bass always dominates
-        loudestInputLevel = outputLevel;
-        /*
-        Serial.println();
-        Serial.print("New loudestInputLevel: ");
-        Serial.println(loudestInputLevel);
-        */
-      }
 
       // turn the light on if outputLevel > inputSensitivity. off otherwise
       if (outputLevel > inputSensitivity) {
@@ -535,7 +543,7 @@ void loop() {
       }
 
       outputStartBin = nextOutputStartBin;
-      outputId = outputId + 1;
+      outputId += 1;
     }
 
     Serial.println();
