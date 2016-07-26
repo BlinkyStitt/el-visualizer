@@ -5,7 +5,7 @@
 //
 
 /*
- * you can customize these
+ * you can easily customize these
  *
  * todo: define or const?
  */
@@ -17,11 +17,12 @@
 #define FFT_IGNORED_BINS 1  // skip the first X bins. They are really noisy
 #define MAX_OFF_MS 10000
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define MINIMUM_INPUT_SENSITIVITY 0.050  // todo: make this a button that sets this to whatever the current volume is?
+#define MINIMUM_INPUT_SENSITIVITY 0.030  // todo: make this a button that sets this to whatever the current volume is?
 #define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
 #define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
+#define DEBUG true    // todo: write a debug_print that uses this to print to serial
 
-const int minimumOnMs = 250;
+const int minimumOnMs = 200;
 const int numFftBinsWeCareAbout = 25;  // only the bottom 10-20% of the FFT is worth visualizing
 
 // inspired by http://www.kent-engineers.com/codespeed.htm
@@ -30,11 +31,11 @@ const int morseDahMs = morseDitMs * 3;
 const int morseElementSpaceMs = 825;  // 10% longer than a dah
 const int morseWordSpaceMs = morseElementSpaceMs * 3;
 /*
- * END you can customize these
+ * END you can easily customize these
  */
 
-#define FFT_MAX_BINS 127
-#define MAX_OUTPUTS 8
+#define FFT_MAX_BINS 127  // you could use AudioAnalyzeFFT1024, but we don't need that granularity here
+#define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
 #define OUTPUT_A 0
 #define OUTPUT_B 1
 #define OUTPUT_C 2
@@ -43,11 +44,11 @@ const int morseWordSpaceMs = morseElementSpaceMs * 3;
 #define OUTPUT_F 5
 #define OUTPUT_G 8
 #define OUTPUT_H 20
+const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+
 #define OUTPUT_ON 0
 #define OUTPUT_OFF 1
 #define OUTPUT_OFF_NEXT_OUTPUT 2
-
-const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
 
 #include <Audio.h>
 #include <elapsedMillis.h>
@@ -63,28 +64,20 @@ AudioConnection          patchCord1(audioInput, audioOutput);
 AudioConnection          patchCord2(audioInput, myFFT);
 AudioControlSGTL5000     audioShield;
 
-struct MorseCommand {
+// save on/off/off+next states. if current time < runningSumOfCheckMs, than do action. else check next time
+struct TimedAction {
   unsigned int checkMs;
   unsigned int outputAction;
 };
 int morse_array_length = MAX_MORSE_ARRAY_LENGTH;
-MorseCommand morse_array[MAX_MORSE_ARRAY_LENGTH];
+TimedAction morse_array[MAX_MORSE_ARRAY_LENGTH];
 
 
 /*
    HELPER FUNCTIONS
 */
 
-void printNumber(float n, float minimum = 0.008) {
-  if (n >= minimum) {
-    Serial.print(n, 3);
-    Serial.print(" ");
-  } else {
-    Serial.print("   -  "); // don't print "0.00"
-  }
-}
-
-int morseDit(MorseCommand morse_array[], int i) {
+int morseDit(TimedAction morse_array[], int i) {
   Serial.print('.');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDitMs;
@@ -93,7 +86,7 @@ int morseDit(MorseCommand morse_array[], int i) {
   return morse_element_space(morse_array, i);
 }
 
-int morseDah(MorseCommand morse_array[], int i) {
+int morseDah(TimedAction morse_array[], int i) {
   Serial.print('-');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDahMs;
@@ -102,7 +95,7 @@ int morseDah(MorseCommand morse_array[], int i) {
   return morse_element_space(morse_array, i);
 }
 
-int morse_element_space(MorseCommand morse_array[], int i) {
+int morse_element_space(TimedAction morse_array[], int i) {
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseElementSpaceMs;
   morse_array[i].outputAction = OUTPUT_OFF;
@@ -110,7 +103,7 @@ int morse_element_space(MorseCommand morse_array[], int i) {
   return i;
 }
 
-int morse_word_space(MorseCommand morse_array[], int i) {
+int morse_word_space(TimedAction morse_array[], int i) {
   Serial.print(" / ");
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseWordSpaceMs;
@@ -120,7 +113,7 @@ int morse_word_space(MorseCommand morse_array[], int i) {
 }
 
 /*
-MorseCommand[] string2morse(String str) {
+TimedAction[] string2morse(String str) {
   // todo: move all the morse stuff in setup up to here
 }
 */
@@ -130,8 +123,9 @@ MorseCommand[] string2morse(String str) {
 */
 
 void setup() {
-  Serial.begin(9600);  // TODO! disable this on production build
+  Serial.begin(9600);  // TODO! disable this if DEBUG mode on. optimizer will get rid of it
 
+  // setup audio shield
   AudioMemory(10); // todo: tune this. so far max i've seen is 5
   audioShield.enable();
   audioShield.muteHeadphone(); // to avoid any clicks
@@ -153,6 +147,7 @@ void setup() {
 
   myFFT.averageTogether(FFT_AVERAGE_TOGETHER);
 
+  // setup outputs
   for (int i=0; i<MAX_OUTPUTS; i++) {
     pinMode(outputPins[i], OUTPUT);
   }
@@ -177,11 +172,10 @@ void setup() {
       morseFile.close();
     }
   }
-
+  // fallback to our default string if nothing loaded
   if (morseString == "") {
-    // if the file isn't open, pop up an error:
     Serial.println("No morse.txt...");
-    morseString = DEFAULT_MORSE_STRING;
+    morseString = DEFAULT_MORSE_STRING; // todo: PROGMEM for this?
   }
 
   Serial.print("morseString: ");
@@ -192,6 +186,7 @@ void setup() {
     // todo: make sure morse_array_length never exceeds max
     // https://upload.wikimedia.org/wikipedia/en/5/5a/Morse_comparison.svg
     // todo: make everything upcase?
+    // todo: put this in its own library?
     switch (morseString[i]) {
       case 'E':
         morse_array_length = morseDit(morse_array, morse_array_length);
@@ -425,8 +420,8 @@ void setup() {
   // todo: is this enough?
   randomSeed(analogRead(0));
 
-  Serial.println("Starting in 1 second...");
-  delay(1000);
+  Serial.println("Starting in a moment...");
+  delay(500);
 }
 
 
@@ -438,7 +433,8 @@ int morseOutputId = random(numOutputs);
 
 // Exponential Moving Average of each wire individually and then all the wires together
 float avgInputLevel[MAX_OUTPUTS + 1];
-float lastLoudestLevel = 0;
+avgInputLevel[MAX_OUTPUTS] = MINIMUM_INPUT_SENSITIVITY;
+float lastLoudestLevel = MINIMUM_INPUT_SENSITIVITY;
 
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
@@ -481,7 +477,7 @@ void loop() {
     Serial.print(numOutputs);
     Serial.print(" outputs (");
     Serial.print(avgInputLevel[MAX_OUTPUTS]);
-    Serial.print(" avg): ");
+    Serial.print(" avg): | ");
     // END DEBUGGING
 
     float inputLevelAccumulator = 0;
@@ -498,19 +494,29 @@ void loop() {
       }
 
       // .read(x, y) gives us a sum of bins x through y so we divide to keep the average
-      float outputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
+      float inputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
 
       // take an average of the true input
-      avgInputLevel[outputId] += EMA_ALPHA * (outputLevel - avgInputLevel[outputId]);   // todo: not sure about this
+      avgInputLevel[outputId] += EMA_ALPHA * (inputLevel - avgInputLevel[outputId]);
 
-      if (outputLevel > lastLoudestLevel) {
-        lastLoudestLevel = outputLevel;
-      }
-
+      // go numb to sounds that are louder than the average
       if (avgInputLevel[outputId] > inputSensitivity) {
-        outputLevel -= avgInputLevel[outputId] * 1.0;  // go numb to loud sounds. todo: tune this
+        inputLevel -= avgInputLevel[outputId] * 0.9;
+
+        // todo: not sure about this
+        if (inputLevel < 0) {
+          inputLevel = 0;
+        }
       }
-      inputLevelAccumulator += outputLevel;
+
+      // save our loudest (modified) sound
+      if (inputLevel > lastLoudestLevel) {
+        lastLoudestLevel = inputLevel;
+      }
+
+      // keep track of the sum of our outputs so we can calculate an average later
+      // todo: not sure if excluding negatives is going to be better
+      inputLevelAccumulator += inputLevel;
 
       /*
       // DEBUGGING
@@ -522,23 +528,27 @@ void loop() {
       Serial.print(numOutputBins);
       Serial.println(")");
       */
-      printNumber(outputLevel - inputSensitivity, 0);
       // END DEBUGGING
 
-      // turn the light on if outputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
-      if (outputLevel > inputSensitivity) {
-        if (avgInputLevel[MAX_OUTPUTS] < inputSensitivity) {    // TODO! this is probably wrong
+      // turn the light on if inputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
+      if (inputLevel > inputSensitivity) {
+        if (avgInputLevel[MAX_OUTPUTS] < inputSensitivity) {    // todo: tune this
           // we have a loud sound, but the other outputs are quiet, so ignore it
-          ;  //Serial.println("Ignored...");
+          Serial.print("XXX");  // input ignored
         } else {
+          //Serial.print(inputLevel - inputSensitivity, 3);
           outputStates[outputId] = HIGH;
 
           // save the time this output turned on. morse code waits for this to be old
           lastOnMs = nowMs;
 
-          // save the time we turned on unless we are in the minimumOnMs window of a previous on
-          if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
+          // save the time we turned on unless we are in the front X% of the minimumOnMs window of a previous on
+          if (nowMs - lastOnMsArray[outputId] > minimumOnMs * 0.80) {   // todo: tune this
+            // todo: instead of setting to the true time, set to some average of the old time and the new?
+            Serial.print(" 0 ");
             lastOnMsArray[outputId] = lastOnMs;
+          } else {
+            Serial.print(" - ");
           }
         }
       } else {
@@ -546,13 +556,16 @@ void loop() {
           // the output has been on for at least minimumOnMs. turn it off
           // don't actually turn off here because that might break the morse code
           outputStates[outputId] = LOW;
+          Serial.print("   ");   // we turned the output off. show blank space
+        } else {
+          Serial.print(" . ");   // we left the output on
         }
       }
+      Serial.print(" | ");
 
       outputStartBin = nextOutputStartBin;
       outputId += 1;
     }
-
     Serial.println();
 
     avgInputLevel[MAX_OUTPUTS] += EMA_ALPHA * (inputLevelAccumulator - avgInputLevel[MAX_OUTPUTS]);   // todo: not sure about this
@@ -570,7 +583,7 @@ void loop() {
     bool morse_command_found = false;
 
     for (int i = 0; i < morse_array_length; i++) {
-      MorseCommand morse_command = morse_array[i];
+      TimedAction morse_command = morse_array[i];
       checkMs = checkMs + morse_command.checkMs;
       if (nowMs < checkMs) {
         bool firstRun = (lastMorseId != i);
