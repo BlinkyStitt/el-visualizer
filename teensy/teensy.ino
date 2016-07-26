@@ -433,8 +433,7 @@ int morseOutputId = random(numOutputs);
 
 // Exponential Moving Average of each wire individually and then all the wires together
 float avgInputLevel[MAX_OUTPUTS + 1];
-avgInputLevel[MAX_OUTPUTS] = MINIMUM_INPUT_SENSITIVITY;
-float lastLoudestLevel = MINIMUM_INPUT_SENSITIVITY;
+float lastLoudestLevel = 0;
 
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
@@ -501,7 +500,7 @@ void loop() {
 
       // go numb to sounds that are louder than the average
       if (avgInputLevel[outputId] > inputSensitivity) {
-        inputLevel -= avgInputLevel[outputId] * 0.9;
+        inputLevel -= avgInputLevel[outputId] * 1.0;    // todo: tune this
 
         // todo: not sure about this
         if (inputLevel < 0) {
@@ -532,24 +531,26 @@ void loop() {
 
       // turn the light on if inputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
       if (inputLevel > inputSensitivity) {
+        /*
+        // todo: this keeps skipping actual music. figure out a better way to do this
         if (avgInputLevel[MAX_OUTPUTS] < inputSensitivity) {    // todo: tune this
           // we have a loud sound, but the other outputs are quiet, so ignore it
           Serial.print("XXX");  // input ignored
         } else {
-          //Serial.print(inputLevel - inputSensitivity, 3);
-          outputStates[outputId] = HIGH;
+        */
+        outputStates[outputId] = HIGH;
 
-          // save the time this output turned on. morse code waits for this to be old
-          lastOnMs = nowMs;
+        // save the time this output turned on. morse code waits for this to be old
+        lastOnMs = nowMs;
 
-          // save the time we turned on unless we are in the front X% of the minimumOnMs window of a previous on
-          if (nowMs - lastOnMsArray[outputId] > minimumOnMs * 0.80) {   // todo: tune this
-            // todo: instead of setting to the true time, set to some average of the old time and the new?
-            Serial.print(" 0 ");
-            lastOnMsArray[outputId] = lastOnMs;
-          } else {
-            Serial.print(" - ");
-          }
+        // save the time we turned on unless we are in the front X% of the minimumOnMs window of a previous on
+        if (nowMs - lastOnMsArray[outputId] > minimumOnMs * 0.80) {   // todo: tune this
+          // todo: instead of setting to the true time, set to some average of the old time and the new?
+          Serial.print(" 0 ");
+          lastOnMsArray[outputId] = lastOnMs;
+        } else {
+          lastOnMsArray[outputId] += 25;    // todo: tune this. add a variable amount based on how far into the window we are?
+          Serial.print(" - ");
         }
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
