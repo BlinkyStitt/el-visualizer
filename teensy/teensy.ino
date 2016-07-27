@@ -43,10 +43,10 @@ Brilliance      6 to 20 kHz
 const int numFftBinsWeCareAbout = 233 - FFT_IGNORED_BINS;
 // TODO! we shouldn't cut the spectrum into even chunks. the higher frequencies should be combined
 
-// inspired by http://www.kent-engineers.com/codespeed.htm
-const int morseDitMs = 250;
+// TODO: tune these to look pretty
+const int morseDitMs = 400;
 const int morseDahMs = morseDitMs * 3;
-const int morseElementSpaceMs = 825;  // 10% longer than a dah
+const int morseElementSpaceMs = morseDahMs * 1.5;
 const int morseWordSpaceMs = morseElementSpaceMs * 3;
 /*
  * END you can easily customize these
@@ -63,10 +63,6 @@ const int morseWordSpaceMs = morseElementSpaceMs * 3;
 #define OUTPUT_H 20
 const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
 int outputBins[MAX_OUTPUTS];
-
-#define OUTPUT_ON 0
-#define OUTPUT_OFF 1
-#define OUTPUT_OFF_NEXT_OUTPUT 2
 
 #include <Audio.h>
 #include <elapsedMillis.h>
@@ -99,7 +95,7 @@ int morseDit(TimedAction morse_array[], int i) {
   Serial.print('.');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDitMs;
-  morse_array[i].outputAction = OUTPUT_ON;
+  morse_array[i].outputAction = HIGH;
   i++;
   return morse_element_space(morse_array, i);
 }
@@ -108,7 +104,7 @@ int morseDah(TimedAction morse_array[], int i) {
   Serial.print('-');
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseDahMs;
-  morse_array[i].outputAction = OUTPUT_ON;
+  morse_array[i].outputAction = HIGH;
   i++;
   return morse_element_space(morse_array, i);
 }
@@ -116,7 +112,7 @@ int morseDah(TimedAction morse_array[], int i) {
 int morse_element_space(TimedAction morse_array[], int i) {
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseElementSpaceMs;
-  morse_array[i].outputAction = OUTPUT_OFF;
+  morse_array[i].outputAction = LOW;
   i++;
   return i;
 }
@@ -125,7 +121,7 @@ int morse_word_space(TimedAction morse_array[], int i) {
   Serial.print(" / ");
   // todo: protect overflowing morse_array
   morse_array[i].checkMs = morseWordSpaceMs;
-  morse_array[i].outputAction = OUTPUT_OFF_NEXT_OUTPUT;
+  morse_array[i].outputAction = LOW;
   i++;
   return i;
 }
@@ -444,7 +440,6 @@ elapsedMillis nowMs = 0;
 
 int blinkOutput = OUTPUT_A;
 int numOutputs = 1;
-int morseOutputId = random(numOutputs);
 
 // Exponential Moving Average of each wire individually and then all the wires together
 float avgInputLevel[MAX_OUTPUTS + 1];
@@ -454,7 +449,7 @@ unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
 int outputStates[MAX_OUTPUTS];
 
-int lastMorseId = 0;
+int lastMorseId[MAX_OUTPUTS];   // todo: fill this with -1 on start?
 
 
 void updateNumOutputs() {
@@ -472,6 +467,9 @@ void updateNumOutputs() {
     digitalWrite(outputPins[i], LOW);
   }
 
+  Serial.print("New numOutputs: ");
+  Serial.println(numOutputs);
+
   // blink the new number of outputs on all the wires
   // todo: do this in morse code?
   for (int i=0; i<numOutputs; i++) {
@@ -480,16 +478,16 @@ void updateNumOutputs() {
       digitalWrite(outputPins[j], HIGH);
     }
     // wait
-    delay(morseDahMs);
+    delay(minimumOnMs);
     // turn all the wires off
     for (int j=0; j<numOutputs; j++) {
       digitalWrite(outputPins[j], LOW);
     }
     // wait
-    delay(morseElementSpaceMs);
+    delay(minimumOnMs);
   }
   // wait
-  delay(morseWordSpaceMs);
+  delay(minimumOnMs * 2);
 }
 
 
@@ -623,57 +621,51 @@ void loop() {
     }
   } else {
     // no lights have been turned on for at least MAX_OFF_MS
-    unsigned long checkMs = MAX_OFF_MS;
 
     bool morse_command_found = false;
 
-    for (int i = 0; i < morse_array_length; i++) {
-      TimedAction morse_command = morse_array[i];
-      checkMs = checkMs + morse_command.checkMs;
-      if (nowMs < checkMs) {
-        bool firstRun = (lastMorseId != i);
-        if (firstRun) {
-          Serial.print("AudioMemoryUsageMax: ");
-          Serial.println(AudioMemoryUsageMax());
-          lastMorseId = i;
-          /*
-          // DEBUGGING
-          Serial.print(nowMs);
-          Serial.print(" < ");
-          Serial.print(checkMs);
-          Serial.print(" - Output: ");
-          Serial.print(morseOutputId);
-          Serial.print(" - Action #");
-          Serial.print(i);
-          Serial.print(": ");
-          Serial.print(morse_command.outputAction);
-          Serial.print(" for ");
-          Serial.print(morse_command.checkMs);
-          Serial.println();
-          // END DEBUGGING
-          */
-
-          if (morse_command.outputAction == OUTPUT_ON) {
-            digitalWrite(morseOutputId, HIGH);
-          } else if (morse_command.outputAction == OUTPUT_OFF) {
-            digitalWrite(morseOutputId, LOW);
-          } else {
-            // make sure the wire is off
-            digitalWrite(morseOutputId, LOW);
-            // turn on a random wire
-            // TODO: should we allow doing random or next?
-            int oldMorseOutputId = morseOutputId;
-            while (oldMorseOutputId == morseOutputId) {
-              morseOutputId = random(numOutputs);
+    for (int morseOutputId = 0; morseOutputId < numOutputs; morseOutputId++) {
+      unsigned long checkMs = MAX_OFF_MS;
+      unsigned long offset = morseOutputId * 50;  // todo: tune this
+      if (offset > MAX_OFF_MS) {
+        checkMs = 0;
+      } else {
+        checkMs = MAX_OFF_MS - offset;
+      }
+      for (int i = 0; i < morse_array_length; i++) {
+        TimedAction morse_command = morse_array[i];
+        checkMs += morse_command.checkMs;
+        if (nowMs < checkMs) {
+          bool firstRun = (lastMorseId[morseOutputId] != i);
+          if (firstRun) {
+            if (morseOutputId == 0) {
+              Serial.print("AudioMemoryUsageMax: ");
+              Serial.println(AudioMemoryUsageMax());
             }
+            lastMorseId[morseOutputId] = i;
+            // DEBUGGING
+            /*
+            Serial.print(nowMs);
+            Serial.print(" < ");
+            Serial.print(checkMs);
+            Serial.print(" - Output: ");
+            Serial.print(morseOutputId);
+            Serial.print(" - Action #");
+            Serial.print(i);
+            Serial.print(": ");
+            Serial.print(morse_command.outputAction);
+            Serial.print(" for ");
+            Serial.print(morse_command.checkMs);
+            Serial.println();
+            */
+            // END DEBUGGING
 
-            Serial.print("New morseOutputId: ");
-            Serial.println(morseOutputId);
+            digitalWrite(morseOutputId, (bool)morse_command.outputAction);
           }
-        }
 
-        morse_command_found = true;
-        break;
+          morse_command_found = true;
+          break;
+        }
       }
     }
 
