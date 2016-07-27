@@ -491,10 +491,7 @@ void updateNumOutputs() {
 }
 
 
-
-void loop() {
-  updateNumOutputs();
-
+void updateOutputStatesFromFFT() {
   // parse FFT data
   // The 1024 point FFT always updates at approximately 86 times per second.
   if (myFFT.available()) {
@@ -613,6 +610,77 @@ void loop() {
 
     avgInputLevel[MAX_OUTPUTS] += EMA_ALPHA * (inputLevelAccumulator - avgInputLevel[MAX_OUTPUTS]);   // todo: not sure about this
   }
+}
+
+
+void blinkMorseCode() {
+  bool morse_command_found = false;
+
+  for (int morseOutputId = 0; morseOutputId < numOutputs; morseOutputId++) {
+    unsigned long checkMs = MAX_OFF_MS;
+    unsigned long offset = morseOutputId * 50;  // todo: tune this
+    if (offset > MAX_OFF_MS) {
+      checkMs = 0;
+    } else {
+      checkMs = MAX_OFF_MS - offset;
+    }
+    for (int i = 0; i < morse_array_length; i++) {
+      TimedAction morse_command = morse_array[i];
+      checkMs += morse_command.checkMs;
+      if (nowMs < checkMs) {
+        bool firstRun = (lastMorseId[morseOutputId] != i);
+        if (firstRun) {
+          if (morseOutputId == 0) {
+            Serial.print("AudioMemoryUsageMax: ");
+            Serial.println(AudioMemoryUsageMax());
+          }
+          lastMorseId[morseOutputId] = i;
+          // DEBUGGING
+          /*
+          Serial.print(nowMs);
+          Serial.print(" < ");
+          Serial.print(checkMs);
+          Serial.print(" - Output: ");
+          Serial.print(morseOutputId);
+          Serial.print(" - Action #");
+          Serial.print(i);
+          Serial.print(": ");
+          Serial.print(morse_command.outputAction);
+          Serial.print(" for ");
+          Serial.print(morse_command.checkMs);
+          Serial.println();
+          */
+          // END DEBUGGING
+
+          digitalWrite(morseOutputId, (bool)morse_command.outputAction);
+        }
+
+        morse_command_found = true;
+        break;
+      }
+    }
+  }
+
+  if (not morse_command_found) {
+    // we hit the end of the loop
+    // reset time so we start at the beginning of the message
+    Serial.println("Loop morse code message...");
+    lastOnMs = 0;
+    nowMs = MAX_OFF_MS;
+
+    /*
+    // reset the lastOnMsArray loop. todo: we might not need this
+    for (int i = 0; i < MAX_OUTPUTS; i++) {
+      lastOnMsArray[i] = 0;
+    }
+    */
+  }
+}
+
+void loop() {
+  updateNumOutputs();
+
+  updateOutputStatesFromFFT();
 
   if (nowMs - lastOnMs < MAX_OFF_MS) {
     // we turned a light on recently. send output states to the wires
@@ -622,66 +690,6 @@ void loop() {
   } else {
     // no lights have been turned on for at least MAX_OFF_MS
 
-    bool morse_command_found = false;
-
-    for (int morseOutputId = 0; morseOutputId < numOutputs; morseOutputId++) {
-      unsigned long checkMs = MAX_OFF_MS;
-      unsigned long offset = morseOutputId * 50;  // todo: tune this
-      if (offset > MAX_OFF_MS) {
-        checkMs = 0;
-      } else {
-        checkMs = MAX_OFF_MS - offset;
-      }
-      for (int i = 0; i < morse_array_length; i++) {
-        TimedAction morse_command = morse_array[i];
-        checkMs += morse_command.checkMs;
-        if (nowMs < checkMs) {
-          bool firstRun = (lastMorseId[morseOutputId] != i);
-          if (firstRun) {
-            if (morseOutputId == 0) {
-              Serial.print("AudioMemoryUsageMax: ");
-              Serial.println(AudioMemoryUsageMax());
-            }
-            lastMorseId[morseOutputId] = i;
-            // DEBUGGING
-            /*
-            Serial.print(nowMs);
-            Serial.print(" < ");
-            Serial.print(checkMs);
-            Serial.print(" - Output: ");
-            Serial.print(morseOutputId);
-            Serial.print(" - Action #");
-            Serial.print(i);
-            Serial.print(": ");
-            Serial.print(morse_command.outputAction);
-            Serial.print(" for ");
-            Serial.print(morse_command.checkMs);
-            Serial.println();
-            */
-            // END DEBUGGING
-
-            digitalWrite(morseOutputId, (bool)morse_command.outputAction);
-          }
-
-          morse_command_found = true;
-          break;
-        }
-      }
-    }
-
-    if (not morse_command_found) {
-      // we hit the end of the loop
-      // reset time so we start at the beginning of the message
-      Serial.println("Loop morse code message...");
-      lastOnMs = 0;
-      nowMs = MAX_OFF_MS;
-
-      /*
-      // reset the lastOnMsArray loop. todo: we might not need this
-      for (int i = 0; i < MAX_OUTPUTS; i++) {
-        lastOnMsArray[i] = 0;
-      }
-      */
-    }
+    blinkMorseCode();
   }
 }
