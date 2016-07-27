@@ -11,37 +11,17 @@
  */
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
-#define INPUT_NUM_OUTPUTS_KNOB 15
-#define EMA_ALPHA 0.2
-#define FFT_IGNORED_BINS 1  // skip the first FFT_IGNORED_BINS * 43 Hz
-#define MAX_OFF_MS 10000
-#define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
-#define MINIMUM_INPUT_SENSITIVITY 0.030  // todo: make this a button that sets this to whatever the current volume is?
-#define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
-#define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
 #define DEBUG true    // todo: write a debug_print that uses this to print to serial
+#define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
+#define EMA_ALPHA 0.2
+#define FFT_IGNORED_BINS 2  // skip the first FFT_IGNORED_BINS * FFT_HZ_PER_BIN Hz
+#define INPUT_NUM_OUTPUTS_KNOB 15
+#define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
+#define MAX_OFF_MS 10000
+#define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
+#define MINIMUM_INPUT_SENSITIVITY 0.030  // todo: make this a button that sets this to whatever the current volume is?
 
 const int minimumOnMs = 200;
-
-// max of 512 * 43 Hz == 22k Hz
-// 16k Hz = 372
-// 10k Hz = 233
-// 5k Hz = 116
-/*
- *
-
-Sub-bass       20 to  60 Hz
-Bass           60 to 250 Hz
-Low midrange  250 to 500 Hz
-Midrange      500 Hz to 2 kHz
-Upper midrange  2 to 4 kHz
-Presence        4 to 6 kHz
-Brilliance      6 to 20 kHz
-
- */
-
-const int numFftBinsWeCareAbout = 233 - FFT_IGNORED_BINS;
-// TODO! we shouldn't cut the spectrum into even chunks. the higher frequencies should be combined
 
 // TODO: tune these to look pretty
 const int morseDitMs = 400;
@@ -52,6 +32,7 @@ const int morseWordSpaceMs = morseElementSpaceMs * 3;
  * END you can easily customize these
  */
 
+#define FFT_HZ_PER_BIN 43
 #define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
 #define OUTPUT_A 0
 #define OUTPUT_B 1
@@ -462,13 +443,45 @@ void updateNumOutputs() {
   }
   // we changed numOutputs
 
+  Serial.print("New numOutputs: ");
+  Serial.println(numOutputs);
+
   // turn all the wires off
   for (int i=0; i<MAX_OUTPUTS; i++) {
     digitalWrite(outputPins[i], LOW);
   }
 
-  Serial.print("New numOutputs: ");
-  Serial.println(numOutputs);
+  // max of 512 * 43 Hz == 22k Hz
+  // 16k Hz = 372
+  // 10k Hz = 233
+  // 5k Hz = 116
+  /*
+      Sub-bass       20 to  60 Hz
+      Bass           60 to 250 Hz
+      Low midrange  250 to 500 Hz
+      Midrange      500 Hz to 2 kHz
+      Upper midrange  2 to 4 kHz
+      Presence        4 to 6 kHz
+      Brilliance      6 to 20 kHz
+
+   */
+  switch(numOutputs) {
+    // TODO! TUNE THIS AND FILL OUT THE REST
+    case 1:
+      // everything averaged together
+      outputBins[0] = (6000 / 43);
+      break;
+    case 6:
+      // TODO! TUNE THIS.
+      outputBins[0] = 6;  // round(250 / 43)
+      outputBins[1] = 12;  // round(500 / 43)
+      outputBins[2] = 47;  // round(2000 / 43)
+      outputBins[3] = 79;  // round(3000 / 43)
+      outputBins[4] = 93;  // round(4000 / 43)
+      outputBins[5] = 128;  // round(5500 / 43)
+      break;
+    // todo: maybe a default case that just does a simple formula with bigger buckets at the end
+  }
 
   // blink the new number of outputs on all the wires
   // todo: do this in morse code?
@@ -495,21 +508,22 @@ void updateOutputStatesFromFFT() {
   // parse FFT data
   // The 1024 point FFT always updates at approximately 86 times per second.
   if (myFFT.available()) {
-    int numOutputBins, nextOutputStartBin, outputId = 0;
-    int outputStartBin = FFT_IGNORED_BINS;  // ignore the first FFT_IGNORED_BINS bins as they can be far too noisy. maybe the eq/filters can help tho?
-
-    int expectedBinsPerOutput = numFftBinsWeCareAbout / numOutputs;
+    int numOutputBins, nextOutputStartBin;
+    int outputStartBin = FFT_IGNORED_BINS;  // ignore the first FFT_IGNORED_BINS bins as they can be far too noisy
 
     // set the overall sensitivity based on how loud the previous inputs were
     float inputSensitivity = lastLoudestLevel * MINIMUM_INPUT_RANGE;
     if (inputSensitivity < MINIMUM_INPUT_SENSITIVITY) {
       inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
     }
+    inputSensitivity = 0.03;
+
+    // now that we've used lastLoudestLevel, reset it to 0 so we can get the latest.
+    // todo: it might be worth doing this as an exponential moving average but it looks good as is
     lastLoudestLevel = 0;
 
     // DEBUGGING
-    Serial.print(numFftBinsWeCareAbout);
-    Serial.print(" FFT bins >");
+    Serial.print("FFT >");
     Serial.print(inputSensitivity, 3);
     Serial.print(" across ");
     Serial.print(numOutputs);
@@ -519,45 +533,40 @@ void updateOutputStatesFromFFT() {
     // END DEBUGGING
 
     float inputLevelAccumulator = 0;
-    while (outputStartBin < numFftBinsWeCareAbout + FFT_IGNORED_BINS) {
-      // todo: do we actually want even output sizes? maybe the first bins should be smaller
-      if (outputId < numOutputs - 1) {
-        nextOutputStartBin = outputStartBin + expectedBinsPerOutput;
-        numOutputBins = expectedBinsPerOutput;
-      } else {
-        // last output
-        // make sure we get the last bin in case of rounding errors
-        nextOutputStartBin = numFftBinsWeCareAbout + FFT_IGNORED_BINS;
-        numOutputBins = nextOutputStartBin - outputStartBin;
+    for (int outputId = 0; outputId < numOutputs; outputId++) {
+      nextOutputStartBin = outputBins[outputId] + 1;
+      numOutputBins = nextOutputStartBin - outputStartBin;
+      if (numOutputBins < 1) {
+        numOutputBins = 1;
       }
 
       // .read(x, y) gives us a sum of bins x through y so we divide to keep the average
       float inputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
 
-      // take an average of the true input
+      // record exponential moving average of the inputLevel
       avgInputLevel[outputId] += EMA_ALPHA * (inputLevel - avgInputLevel[outputId]);
 
-      // go numb to sounds that are louder than the average
+      // go numb to sounds that are louder than the average inputLevel for this outputId
       if (avgInputLevel[outputId] > inputSensitivity) {
-        inputLevel -= avgInputLevel[outputId] * 1.0;    // todo: tune this
+        inputLevel -= avgInputLevel[outputId] * 1;    // todo: tune this
 
-        // todo: not sure about this
+        // but don't go negative.
         if (inputLevel < 0) {
           inputLevel = 0;
         }
       }
 
-      // save our loudest (modified) sound
+      // save our loudest (modified) level
       if (inputLevel > lastLoudestLevel) {
         lastLoudestLevel = inputLevel;
       }
 
-      // keep track of the sum of our outputs so we can calculate an average later
-      // todo: not sure if excluding negatives is going to be better
+      // keep track of the sum of our modified levels so we can calculate an average later
       inputLevelAccumulator += inputLevel;
 
       /*
       // DEBUGGING
+      Serial.println();
       Serial.print("Reading ");
       Serial.print(outputStartBin);
       Serial.print(" to ");
@@ -565,8 +574,8 @@ void updateOutputStatesFromFFT() {
       Serial.print(" (");
       Serial.print(numOutputBins);
       Serial.println(")");
-      */
       // END DEBUGGING
+      */
 
       // turn the light on if inputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
       if (inputLevel > inputSensitivity) {
@@ -585,26 +594,26 @@ void updateOutputStatesFromFFT() {
         // save the time we turned on unless we are in the front X% of the minimumOnMs window of a previous on
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs * 0.80) {   // todo: tune this
           // todo: instead of setting to the true time, set to some average of the old time and the new?
-          Serial.print(" 0 ");
+          Serial.print(inputLevel, 3);
           lastOnMsArray[outputId] = lastOnMs;
         } else {
           lastOnMsArray[outputId] += 25;    // todo: tune this. add a variable amount based on how far into the window we are?
-          Serial.print(" - ");
+          Serial.print(" -   ");
         }
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
           // the output has been on for at least minimumOnMs. turn it off
           // don't actually turn off here because that might break the morse code
           outputStates[outputId] = LOW;
-          Serial.print("   ");   // we turned the output off. show blank space
+          Serial.print("     ");   // we turned the output off. show blank space
         } else {
-          Serial.print(" . ");   // we left the output on
+          Serial.print(" .   ");   // we left the output on
         }
       }
       Serial.print(" | ");
 
+      // prepare for the next iteration
       outputStartBin = nextOutputStartBin;
-      outputId += 1;
     }
     Serial.println();
 
@@ -689,7 +698,6 @@ void loop() {
     }
   } else {
     // no lights have been turned on for at least MAX_OFF_MS
-
     blinkMorseCode();
   }
 }
