@@ -13,8 +13,7 @@
 #define BUTTON_INTERVAL 20
 #define INPUT_NUM_OUTPUTS_KNOB 15
 #define EMA_ALPHA 0.2
-#define FFT_AVERAGE_TOGETHER 8  // higher values = slow refresh rate. default 8 = ~344/8 refreshes per second
-#define FFT_IGNORED_BINS 1  // skip the first X bins. They are really noisy
+#define FFT_IGNORED_BINS 1  // skip the first FFT_IGNORED_BINS * 43 Hz
 #define MAX_OFF_MS 10000
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
 #define MINIMUM_INPUT_SENSITIVITY 0.030  // todo: make this a button that sets this to whatever the current volume is?
@@ -23,7 +22,26 @@
 #define DEBUG true    // todo: write a debug_print that uses this to print to serial
 
 const int minimumOnMs = 200;
-const int numFftBinsWeCareAbout = 25;  // only the bottom 10-20% of the FFT is worth visualizing
+
+// max of 512 * 43 Hz == 22k Hz
+// 16k Hz = 372
+// 10k Hz = 233
+// 5k Hz = 116
+/*
+ *
+
+Sub-bass       20 to  60 Hz
+Bass           60 to 250 Hz
+Low midrange  250 to 500 Hz
+Midrange      500 Hz to 2 kHz
+Upper midrange  2 to 4 kHz
+Presence        4 to 6 kHz
+Brilliance      6 to 20 kHz
+
+ */
+
+const int numFftBinsWeCareAbout = 233 - FFT_IGNORED_BINS;
+// TODO! we shouldn't cut the spectrum into even chunks. the higher frequencies should be combined
 
 // inspired by http://www.kent-engineers.com/codespeed.htm
 const int morseDitMs = 250;
@@ -34,7 +52,6 @@ const int morseWordSpaceMs = morseElementSpaceMs * 3;
  * END you can easily customize these
  */
 
-#define FFT_MAX_BINS 127  // you could use AudioAnalyzeFFT1024, but we don't need that granularity here
 #define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
 #define OUTPUT_A 0
 #define OUTPUT_B 1
@@ -45,6 +62,7 @@ const int morseWordSpaceMs = morseElementSpaceMs * 3;
 #define OUTPUT_G 8
 #define OUTPUT_H 20
 const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+int outputBins[MAX_OUTPUTS];
 
 #define OUTPUT_ON 0
 #define OUTPUT_OFF 1
@@ -59,7 +77,7 @@ const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUT
 
 AudioInputI2S            audioInput;
 AudioOutputI2S           audioOutput; // even though we don't output to this, it still needs to be defined for the shield to work
-AudioAnalyzeFFT256       myFFT;
+AudioAnalyzeFFT1024      myFFT;
 AudioConnection          patchCord1(audioInput, audioOutput);
 AudioConnection          patchCord2(audioInput, myFFT);
 AudioControlSGTL5000     audioShield;
@@ -126,7 +144,7 @@ void setup() {
   Serial.begin(9600);  // TODO! disable this if DEBUG mode on. optimizer will get rid of it
 
   // setup audio shield
-  AudioMemory(10); // todo: tune this. so far max i've seen is 5
+  AudioMemory(12); // todo: tune this. so far max i've seen is 11
   audioShield.enable();
   audioShield.muteHeadphone(); // to avoid any clicks
   audioShield.inputSelect(AUDIO_INPUT_MIC);
@@ -144,8 +162,6 @@ void setup() {
   audioShield.eqBands(-1.0, -0.10, 0.10, 0.10, 0.33);  // todo: tune this
 
   // todo: autoVolume?
-
-  myFFT.averageTogether(FFT_AVERAGE_TOGETHER);
 
   // setup outputs
   for (int i=0; i<MAX_OUTPUTS; i++) {
@@ -420,8 +436,7 @@ void setup() {
   // todo: is this enough?
   randomSeed(analogRead(0));
 
-  Serial.println("Starting in a moment...");
-  delay(500);
+  Serial.println("Starting...");
 }
 
 
@@ -442,19 +457,48 @@ int outputStates[MAX_OUTPUTS];
 int lastMorseId = 0;
 
 
-void loop() {
+void updateNumOutputs() {
   // configure number of outputs
   int oldNumOutputs = numOutputs;
   numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
-  if (oldNumOutputs - numOutputs > 0) {
-    // we turned numOutputs down, make sure we turn the outputs off to match
-    for (int i=numOutputs + 1; i<MAX_OUTPUTS; i++) {
-      digitalWrite(outputPins[i], LOW);
-    }
+
+  if (oldNumOutputs == numOutputs) {
+    return;
   }
-  // TODO! if numOutputs != oldNumOutputs, blink all the wires numOutput times for easy setting
+  // we changed numOutputs
+
+  // turn all the wires off
+  for (int i=0; i<MAX_OUTPUTS; i++) {
+    digitalWrite(outputPins[i], LOW);
+  }
+
+  // blink the new number of outputs on all the wires
+  // todo: do this in morse code?
+  for (int i=0; i<numOutputs; i++) {
+    // turn all the wires on
+    for (int j=0; j<numOutputs; j++) {
+      digitalWrite(outputPins[j], HIGH);
+    }
+    // wait
+    delay(morseDahMs);
+    // turn all the wires off
+    for (int j=0; j<numOutputs; j++) {
+      digitalWrite(outputPins[j], LOW);
+    }
+    // wait
+    delay(morseElementSpaceMs);
+  }
+  // wait
+  delay(morseWordSpaceMs);
+}
+
+
+
+void loop() {
+  updateNumOutputs();
 
   // parse FFT data
+  // The 1024 point FFT always updates at approximately 86 times per second.
   if (myFFT.available()) {
     int numOutputBins, nextOutputStartBin, outputId = 0;
     int outputStartBin = FFT_IGNORED_BINS;  // ignore the first FFT_IGNORED_BINS bins as they can be far too noisy. maybe the eq/filters can help tho?
@@ -589,6 +633,8 @@ void loop() {
       if (nowMs < checkMs) {
         bool firstRun = (lastMorseId != i);
         if (firstRun) {
+          Serial.print("AudioMemoryUsageMax: ");
+          Serial.println(AudioMemoryUsageMax());
           lastMorseId = i;
           /*
           // DEBUGGING
