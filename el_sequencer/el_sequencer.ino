@@ -5,17 +5,16 @@
  *
  * TODO:
  *  - multiplexer to get to MAX_WIRES to 8
- *
+ *  - randomize input -> outputPins every X minutes
  */
 
 /*
  * you can easily customize these
  *
  * todo: define or const?
- *
  */
-#define NUM_OUTPUTS 6  // todo: a button on the board to configure this would be nice, but we need spare pins
-#define MAX_OFF_MS 12000  // keep this longer than the MAX_OFF_MS timeout in the teensy code
+#define MAX_OFF_MS 7000  // keep this longer than the MAX_OFF_MS in the teensy code
+int numOutputs = 1;  // this grows when inputs are turned on  // todo: a button on the board to configure this would be nice, but we need spare pins
 /*
  * END you can easily customize these
  */
@@ -25,7 +24,7 @@
 #define INPUT_B A3
 #define INPUT_C A4
 #define INPUT_D A5
-#define INPUT_E A6  // analog only
+#define INPUT_E A6  // analog only. we should use this for tuning the number of inputs/outputs
 #define INPUT_F A7  // analog only
 //#define INPUT_G ??  //
 //#define INPUT_H ??  //
@@ -85,14 +84,28 @@ void bubbleUnsort(int *list, int elem) {
 int randomizedOutputIds[MAX_WIRES];
 
 void updateNumOutputs() {
-  // todo: write this once we figure out how to get another analog input on the board
-  ;
+  int oldNumOutputs = numOutputs
+
+  // todo: read some input once we figure out how to get another analog input on the board
+
+  if (oldNumOutputs == numOutputs) {
+    // no need to do antyhing. numOutputs didn't change
+    return
+  }
+
+  // put the randomized inputs back in order in case we lowered numOutputs
+  for (int i = 0; i<numOutputs; i++) {
+    randomizedOutputIds[i] = i;
+  }
+
+  // randomize them again
+  bubbleUnsort(randomizedOutputIds, numOutputs);
 }
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this on production build
 
-  for (int i=0; i<MAX_WIRES; i++) {
+  for (int i = 0; i < MAX_WIRES; i++) {
     pinMode(inputPins[i], INPUT);
     pinMode(outputPins[i], OUTPUT);
     randomizedOutputIds[i] = i;
@@ -102,7 +115,7 @@ void setup() {
 
   updateNumOutputs();
 
-  bubbleUnsort(randomizedOutputIds, NUM_OUTPUTS);
+  bubbleUnsort(randomizedOutputIds, numOutputs);
 
   Serial.println("Starting...");
 }
@@ -113,13 +126,19 @@ bool outputState[MAX_WIRES];
 void loop() {
   updateNumOutputs();
 
-  for (int i=0; i<NUM_OUTPUTS; i++) {
+  // todo: change this to support 8 inputs once we use a multiplexer
+  for (int i = 0; i < MAX_WIRES; i++) {
+    int outputId = randomizedOutputIds[i];
     if (analogRead(inputPins[i]) > 500) {  // read everything as analog since some pins can't do digital reads
-      outputState[i] = HIGH;
+      outputState[outputId] = HIGH;
       blinkTime = 0;
+
+      if (i > numOutputs) {
+        // grow numOutputs to match inputs
+        numOutputs = i + 1;
+      }
     } else {
-      // TODO: logic to keep lights on for a minimum amount of time like on the teensy?
-      outputState[i] = LOW;
+      outputState[outputId] = LOW;
     }
   }
 
@@ -127,7 +146,7 @@ void loop() {
     // we turned a light on recently. send output states to the wires
     Serial.print(blinkTime);
     Serial.print("ms : ");
-    for (int i=0; i<NUM_OUTPUTS; i++) {
+    for (int i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], outputState[i]);
       if (outputState[i]) {
         Serial.print(outputState[i]);
@@ -138,11 +157,12 @@ void loop() {
     }
     Serial.println();
   } else {
-    Serial.println("Blinking randomly");
+    Serial.println("Blinking randomly...");
 
     // turn the outputs on in a random order
-    bubbleUnsort(randomizedOutputIds, NUM_OUTPUTS);
-    for (int i=0; i < NUM_OUTPUTS; i++) {
+    // TODO: do this with some functions and without delay calls
+    bubbleUnsort(randomizedOutputIds, numOutputs);
+    for (int i = 0; i < numOutputs; i++) {
       int outputId = randomizedOutputIds[i];
       Serial.print("Turning on #");
       Serial.println(outputId);
@@ -159,13 +179,13 @@ void loop() {
     }
 
     // randomize the outputs for when we turn them off
-    bubbleUnsort(randomizedOutputIds, NUM_OUTPUTS);
+    bubbleUnsort(randomizedOutputIds, numOutputs);
 
     // wait a random amount of time with the outputs on
     delay(random(2000, 3000));
 
     // turn all the outputs off slowly in a random order
-    for (int i=0; i < NUM_OUTPUTS; i++) {
+    for (int i=0; i < numOutputs; i++) {
       int outputId = randomizedOutputIds[i];
       Serial.print("Turning off #");
       Serial.println(outputId);
@@ -185,9 +205,17 @@ void loop() {
     delay(random(500, 750));
 
     // turn the last output back on
-    int lonelyOutputId = randomizedOutputIds[NUM_OUTPUTS - 1];
+    int lonelyOutputId = randomizedOutputIds[numOutputs - 1];
     Serial.print("Turning on lonely light #");
     Serial.println(lonelyOutputId);
+    digitalWrite(outputPins[lonelyOutputId], HIGH);
+    delay(300);
+    digitalWrite(outputPins[lonelyOutputId], LOW);
+    delay(150);
+    digitalWrite(outputPins[lonelyOutputId], HIGH);
+    delay(300);
+    digitalWrite(outputPins[lonelyOutputId], LOW);
+    delay(150);
     digitalWrite(outputPins[lonelyOutputId], HIGH);
 
     // wait a random amount of time with just one light on
@@ -211,6 +239,6 @@ void loop() {
     digitalWrite(outputPins[lonelyOutputId], LOW);
     delay(random(2500, 3000));
 
-    Serial.println("Done blinking");
+    Serial.println("Done blinking.");
   }
 }
