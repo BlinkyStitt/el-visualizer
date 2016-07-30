@@ -84,22 +84,20 @@ void bubbleUnsort(int *list, int elem) {
 int randomizedOutputIds[MAX_WIRES];
 
 void updateNumOutputs() {
-  int oldNumOutputs = numOutputs
+  int oldNumOutputs = numOutputs;
 
   // todo: read some input once we figure out how to get another analog input on the board
 
-  if (oldNumOutputs == numOutputs) {
+  if (oldNumOutputs != numOutputs) {
     // no need to do antyhing. numOutputs didn't change
-    return
-  }
+    // put the randomized inputs back in order in case we lowered numOutputs
+    for (int i = 0; i<numOutputs; i++) {
+      randomizedOutputIds[i] = i;
+    }
 
-  // put the randomized inputs back in order in case we lowered numOutputs
-  for (int i = 0; i<numOutputs; i++) {
-    randomizedOutputIds[i] = i;
+    // randomize them again
+    bubbleUnsort(randomizedOutputIds, numOutputs);
   }
-
-  // randomize them again
-  bubbleUnsort(randomizedOutputIds, numOutputs);
 }
 
 void setup() {

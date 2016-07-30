@@ -53,62 +53,289 @@ int outputBins[MAX_OUTPUTS];
 #include <SD.h>
 #include <SerialFlash.h>
 
-AudioInputI2S            audioInput;
-AudioOutputI2S           audioOutput; // even though we don't output to this, it still needs to be defined for the shield to work
-AudioAnalyzeFFT1024      myFFT;
-AudioConnection          patchCord1(audioInput, audioOutput);
-AudioConnection          patchCord2(audioInput, myFFT);
-AudioControlSGTL5000     audioShield;
+AudioInputI2S audioInput;
+AudioOutputI2S audioOutput; // even though we don't output to this, it still needs to be defined for the shield to work
+AudioAnalyzeFFT1024 myFFT;
+AudioConnection patchCord1(audioInput, audioOutput);
+AudioConnection patchCord2(audioInput, myFFT);
+AudioControlSGTL5000 audioShield;
 
 // save on/off/off+next states. if current time < runningSumOfCheckMs, than do action. else check next time
 struct TimedAction {
   unsigned int checkMs;
   unsigned int outputAction;
 };
-int morse_array_length = 0;
-TimedAction morse_array[MAX_MORSE_ARRAY_LENGTH];
+int morseArrayLength = 0;
+TimedAction morseArray[MAX_MORSE_ARRAY_LENGTH];
 
 
-int morseDit(TimedAction morse_array[], int i) {
+int morseDit(TimedAction morseArray[], int i) {
   Serial.print('.');
-  // todo: protect overflowing morse_array
-  morse_array[i].checkMs = morseDitMs;
-  morse_array[i].outputAction = HIGH;
+  // todo: protect overflowing morseArray
+  morseArray[i].checkMs = morseDitMs;
+  morseArray[i].outputAction = HIGH;
   i++;
-  return morse_element_space(morse_array, i);
+  return morse_element_space(morseArray, i);
 }
 
-int morseDah(TimedAction morse_array[], int i) {
+int morseDah(TimedAction morseArray[], int i) {
   Serial.print('-');
-  // todo: protect overflowing morse_array
-  morse_array[i].checkMs = morseDahMs;
-  morse_array[i].outputAction = HIGH;
+  // todo: protect overflowing morseArray
+  morseArray[i].checkMs = morseDahMs;
+  morseArray[i].outputAction = HIGH;
   i++;
-  return morse_element_space(morse_array, i);
+  return morse_element_space(morseArray, i);
 }
 
-int morse_element_space(TimedAction morse_array[], int i) {
-  // todo: protect overflowing morse_array
-  morse_array[i].checkMs = morseElementSpaceMs;
-  morse_array[i].outputAction = LOW;
+int morse_element_space(TimedAction morseArray[], int i) {
+  // todo: protect overflowing morseArray
+  morseArray[i].checkMs = morseElementSpaceMs;
+  morseArray[i].outputAction = LOW;
   i++;
   return i;
 }
 
-int morse_word_space(TimedAction morse_array[], int i) {
+int morse_word_space(TimedAction morseArray[], int i) {
   Serial.print(" / ");
-  // todo: protect overflowing morse_array
-  morse_array[i].checkMs = morseWordSpaceMs;
-  morse_array[i].outputAction = LOW;
+  // todo: protect overflowing morseArray
+  morseArray[i].checkMs = morseWordSpaceMs;
+  morseArray[i].outputAction = LOW;
   i++;
   return i;
 }
 
-/*
-TimedAction[] string2morse(String str) {
-  // todo: move all the morse stuff in setup up to here
+void string2morse(String morseString) {
+  morseArrayLength = 0;
+  for (unsigned int i = 0; i < morseString.length(); i++) {
+    // todo: make sure morseArrayLength never exceeds max
+    // https://upload.wikimedia.org/wikipedia/en/5/5a/Morse_comparison.svg
+    // todo: make everything uppercase?
+    // todo: put this in its own library?
+    switch (morseString[i]) {
+      case 'E':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'T':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'I':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'A':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'N':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'M':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'S':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'U':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'R':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'W':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'D':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'K':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'G':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'O':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'H':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'V':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'F':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case ' ':
+        morseArrayLength = morse_word_space(morseArray, morseArrayLength);
+        break;
+      case 'L':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'P':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'J':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'B':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'X':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'C':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'Y':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case 'Z':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case 'Q':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '5':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case '4':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '3':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '2':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '1':
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '6':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case '7':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case '8':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case '9':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        break;
+      case '0':
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        break;
+      case '.':
+        // todo: do this on a different wire?
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+        morseArrayLength = morseDit(morseArray, morseArrayLength);
+        morseArrayLength = morseDah(morseArray, morseArrayLength);
+      default:
+        break;
+    }
+
+    Serial.print(' ');
+    morseArrayLength = morse_element_space(morseArray, morseArrayLength);
+  }
+  Serial.println();
 }
-*/
 
 /*
    END HELPER FUNCTIONS
@@ -161,247 +388,17 @@ void setup() {
       }
       morseFile.close();
     }
-    if (morseString) {
-      for (int i=0; i<morseString.length(); i++) {
-        // todo: make sure morse_array_length never exceeds max
-        // https://upload.wikimedia.org/wikipedia/en/5/5a/Morse_comparison.svg
-        // todo: make everything upcase?
-        // todo: put this in its own library?
-        switch (morseString[i]) {
-          case 'E':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'T':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'I':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'A':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'N':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'M':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'S':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'U':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'R':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'W':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'D':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'K':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'G':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'O':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'H':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'V':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'F':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case ' ':
-            morse_array_length = morse_word_space(morse_array, morse_array_length);
-            break;
-          case 'L':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'P':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'J':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'B':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'X':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'C':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'Y':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case 'Z':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case 'Q':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '5':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case '4':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '3':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '2':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '1':
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '6':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case '7':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case '8':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case '9':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            break;
-          case '0':
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            break;
-          case '.':
-            // todo: do this on a different wire?
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-            morse_array_length = morseDit(morse_array, morse_array_length);
-            morse_array_length = morseDah(morse_array, morse_array_length);
-          default:
-            break;
-        }
-
-        Serial.print(' ');
-        morse_array_length = morse_element_space(morse_array, morse_array_length);
-      }
-      Serial.println();
-    }
+    string2morse(morseString);
   }
 
   Serial.print("morse array length: ");
-  Serial.println(morse_array_length);
+  Serial.println(morseArrayLength);
 
   audioShield.unmuteHeadphone();  // for debugging
 
-  randomSeed(morse_array_length + analogRead(0));
+  randomSeed(morseArrayLength + analogRead(0));
 
-  Serial.println("Waiting for EL Sequencer...")
+  Serial.println("Waiting for EL Sequencer...");
   delay(500);
 
   Serial.println("Starting...");
@@ -614,24 +611,21 @@ void updateOutputStatesFromFFT() {
 
 
 bool blinkMorseCode() {
-  // blink all of the wires according to morse_array
+  // blink all of the wires according to morseArray
 
-  bool morse_command_found = false;
+  bool morseCommandFound = false;
   unsigned long checkMs = MAX_OFF_MS;
-  for (int i = 0; i < morse_array_length; i++) {
-    TimedAction morse_command = morse_array[i];
-    checkMs += morse_command.checkMs;
+  for (int morseCommandId = 0; morseCommandId < morseArrayLength; morseCommandId++) {
+    TimedAction morseCommand = morseArray[morseCommandId];
+    checkMs += morseCommand.checkMs;
     if (nowMs < checkMs) {
-      if (lastMorseCommandId != i) {
+      if (lastMorseCommandId != morseCommandId) {
         // this is the first time we've seen this command this iteration
-        if (morseOutputId == 0) {
-          // if we are in the very first command, print some debugging info
-          Serial.print("AudioMemoryUsageMax: ");
-          Serial.println(AudioMemoryUsageMax());
-        }
+        Serial.print("AudioMemoryUsageMax: ");
+        Serial.println(AudioMemoryUsageMax());
 
         // save that we've done this command already
-        lastMorseCommandId = i;
+        lastMorseCommandId = morseCommandId;
         // DEBUGGING
         /*
         Serial.print(nowMs);
@@ -640,30 +634,30 @@ bool blinkMorseCode() {
         Serial.print(" - Output: ");
         Serial.print(morseOutputId);
         Serial.print(" - Action #");
-        Serial.print(i);
+        Serial.print(morseCommandId);
         Serial.print(": ");
-        Serial.print(morse_command.outputAction);
+        Serial.print(morseCommand.outputAction);
         Serial.print(" for ");
-        Serial.print(morse_command.checkMs);
+        Serial.print(morseCommand.checkMs);
         Serial.println();
         */
         // END DEBUGGING
 
         for (int outputId = 0; outputId < numOutputs; outputId++) {
-          digitalWrite(outputId, morse_command.outputAction);
+          digitalWrite(outputId, morseCommand.outputAction);
         }
       }
 
-      morse_command_found = true;
+      morseCommandFound = true;
       break;
     }
   }
 
   // return true when we are done playing the message
-  return not morse_command_found
+  return not morseCommandFound;
 }
 
-bool morse_command_completed = not (bool)morse_array_length;
+bool morseCommandCompleted = not (bool)morseArrayLength;
 
 void loop() {
   updateNumOutputs();
@@ -675,13 +669,13 @@ void loop() {
     for (int i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], outputStates[i]);
     }
-    morse_command_completed = false;
+    morseCommandCompleted = false;
   } else {
     // no lights have been turned on for at least MAX_OFF_MS
     // blink more code
     // todo: play the message twice?
-    if (not morse_command_completed) {
-      blinkMorseCode();
+    if (not morseCommandCompleted) {
+      morseCommandCompleted = blinkMorseCode();
     }
   }
 }
