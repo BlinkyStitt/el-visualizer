@@ -131,8 +131,9 @@ void loop() {
       outputState[outputId] = HIGH;
       blinkTime = 0;
 
-      if (i > numOutputs) {
+      if (i + 1 > numOutputs) {
         // grow numOutputs to match inputs
+        // TODO: something is wrong with this logic. it was showing 1 less wire than it should have
         numOutputs = i + 1;
       }
     } else {
@@ -142,8 +143,8 @@ void loop() {
 
   if (blinkTime < MAX_OFF_MS) {
     // we turned a light on recently. send output states to the wires
-    Serial.print(blinkTime);
-    Serial.print("ms : ");
+    //Serial.print(blinkTime);
+    //Serial.print("ms : ");
     for (int i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], outputState[i]);
       if (outputState[i]) {
