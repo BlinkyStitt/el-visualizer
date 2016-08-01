@@ -3,6 +3,8 @@
  * when it is quiet, lights flash out morse code from an SD card
  * when it is loud, lights flash with the music
  *
+ * TODO: analog button press to set minInputSensitivity
+ *
  */
 
 /*
@@ -20,15 +22,16 @@
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
 #define MAX_OFF_MS 6000
 #define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
-#define MINIMUM_INPUT_SENSITIVITY 0.030  // todo: make this a button that sets this to whatever the current volume is?
 
 const int minimumOnMs = 200;
 
+float minInputSensitivity = 0.035;
+
 // TODO: tune these to look pretty
-const int morseDitMs = 400;
+const int morseDitMs = 250;
 const int morseDahMs = morseDitMs * 3;
-const int morseElementSpaceMs = morseDahMs * 1.5;
-const int morseWordSpaceMs = morseElementSpaceMs * 3;
+const int morseElementSpaceMs = morseDitMs;
+const int morseWordSpaceMs = morseDitMs * 7;
 /*
  * END you can easily customize these
  */
@@ -104,7 +107,7 @@ int morse_word_space(TimedAction morseArray[], int i) {
   return i;
 }
 
-void string2morse(String morseString) {
+void string2morseArray(String morseString) {
   morseArrayLength = 0;
   for (unsigned int i = 0; i < morseString.length(); i++) {
     // todo: make sure morseArrayLength never exceeds max
@@ -388,7 +391,9 @@ void setup() {
       }
       morseFile.close();
     }
-    string2morse(morseString);
+
+    // todo: should we just do this as we read? theres no real need to build a String besides the pretty serial.print
+    string2morseArray(morseString);
   }
 
   Serial.print("morse array length: ");
@@ -439,25 +444,38 @@ void updateNumOutputs() {
     digitalWrite(outputPins[i], LOW);
   }
 
-  // max of 512 * 43 Hz == 22k Hz
-  // 16k Hz = 372
-  // 10k Hz = 233
-  // 5k Hz = 116
   /*
-      Sub-bass       20 to  60 Hz
-      Bass           60 to 250 Hz
-      Low midrange  250 to 500 Hz
-      Midrange      500 Hz to 2 kHz
-      Upper midrange  2 to 4 kHz
-      Presence        4 to 6 kHz
-      Brilliance      6 to 20 kHz
+    // max of 512 * 43 Hz == 22k Hz
+    // 16k Hz = 372
+    // 10k Hz = 233
+    // 5k Hz = 116
 
+    Sub-bass       20 to  60 Hz        40     1        1
+    Bass           60 to 250 Hz       190     4.75     2
+    Low midrange  250 to 500 Hz       250     6.25     4
+    Midrange      500 Hz to 2 kHz    1500    37.5      8
+    Upper midrange  2 to 4 kHz       2000    50       16
+    Presence        4 to 6 kHz       2000    50       32
+    Brilliance      6 to 20 kHz     14000   350       64
+
+    // http://www.phy.mtu.edu/~suits/notefreqs.html
+    The basic formula for the frequencies of the notes of the equal tempered scale is given by
+    fn = f0 * (a)n
+    where
+    f0 = the frequency of one fixed note which must be defined. A common choice is setting the A above middle C (A4) at f0 = 440 Hz.
+    n = the number of half steps away from the fixed note you are. If you are at a higher note, n is positive. If you are on a lower note, n is negative.
+    fn = the frequency of the note n half steps away.
+    a = (2)^(1/12) = the twelth root of 2 = the number which when multiplied by itself 12 times equals 2 = 1.059463094359...
    */
   switch(numOutputs) {
     // TODO! TUNE THIS AND FILL OUT THE REST
     case 1:
       // everything averaged together
       outputBins[0] = (6000 / 43);
+      break;
+    case 2:
+      outputBins[0] = (440 / 43);  // everything below 440 Hz
+      outputBins[1] = (6000 / 43);  // everything below 6 kHz
       break;
     case 6:
       // TODO! TUNE THIS.
@@ -473,22 +491,22 @@ void updateNumOutputs() {
 
   // blink the new number of outputs on all the wires
   // todo: do this in morse code?
-  for (int i=0; i<numOutputs; i++) {
+  for (int i = 0; i < numOutputs; i++) {
     // turn all the wires on
-    for (int j=0; j<numOutputs; j++) {
+    for (int j = 0; j < numOutputs; j++) {
       digitalWrite(outputPins[j], HIGH);
     }
     // wait
-    delay(minimumOnMs);
+    delay(morseDitMs);
     // turn all the wires off
     for (int j=0; j<numOutputs; j++) {
       digitalWrite(outputPins[j], LOW);
     }
     // wait
-    delay(minimumOnMs);
+    delay(morseElementSpaceMs);
   }
   // wait
-  delay(minimumOnMs * 2);
+  delay(morseWordSpaceMs);
 }
 
 
@@ -501,13 +519,11 @@ void updateOutputStatesFromFFT() {
 
     // set the overall sensitivity based on how loud the previous inputs were
     float inputSensitivity = lastLoudestLevel * MINIMUM_INPUT_RANGE;
-    if (inputSensitivity < MINIMUM_INPUT_SENSITIVITY) {
-      inputSensitivity = MINIMUM_INPUT_SENSITIVITY;
+    if (inputSensitivity < minInputSensitivity) {
+      inputSensitivity = minInputSensitivity;
     }
-    inputSensitivity = 0.03;
 
     // now that we've used lastLoudestLevel, reset it to 0 so we can get the latest.
-    // todo: it might be worth doing this as an exponential moving average but it looks good as is
     lastLoudestLevel = 0;
 
     // DEBUGGING
@@ -663,6 +679,8 @@ void loop() {
   updateNumOutputs();
 
   updateOutputStatesFromFFT();
+
+  // todo: check our buttons to see if we should update minInputSensitivity
 
   if (nowMs - lastOnMs < MAX_OFF_MS) {
     // we turned a light on recently. send output states to the wires
