@@ -13,9 +13,9 @@
  *
  * todo: define or const?
  */
-#define MAX_OFF_MS 7000  // keep this longer than the MAX_OFF_MS in the teensy code
+#define MAX_OFF_MS 10000  // keep this longer than the MAX_OFF_MS in the teensy code
 
-const bool randomizeOutputs = true; // todo: move this to the teensy so we can read this setting off the sd card
+const bool randomizeOutputs = false; // todo: move this to the teensy so we can read this setting off the sd card
 /*
  * END you can easily customize these
  */
@@ -91,13 +91,14 @@ void updateNumOutputs() {
   // todo: read some input once we figure out how to get another analog input on the board
 
   if (oldNumOutputs != numOutputs) {
-    // no need to do antyhing. numOutputs didn't change
+    // numOutputs changed
+
     // put the randomized inputs back in order in case we lowered numOutputs
     for (int i = 0; i<numOutputs; i++) {
       randomizedOutputIds[i] = i;
     }
 
-    // randomize them again
+    // randomize the outputs again
     bubbleUnsort(randomizedOutputIds, numOutputs);
   }
 }
@@ -112,10 +113,6 @@ void setup() {
   }
 
   randomSeed(analogRead(A0));
-
-  updateNumOutputs();
-
-  bubbleUnsort(randomizedOutputIds, numOutputs);
 
   Serial.println("Starting...");
 }
@@ -151,7 +148,6 @@ void loop() {
       outputState[outputId] = LOW;
     }
   }
-  Serial.println();
 
   if (blinkTime < MAX_OFF_MS) {
     // we turned a light on recently. send output states to the wires
@@ -160,13 +156,13 @@ void loop() {
     for (int i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], outputState[i]);
       if (outputState[i]) {
-        //Serial.print(outputState[i]);
+        Serial.print(outputState[i]);
       } else {
-        //Serial.print(" ");
+        Serial.print(" ");
       }
-      //Serial.print(" | ");
+      Serial.print(" | ");
     }
-    //Serial.println();
+    Serial.println();
   } else {
     Serial.println("Blinking randomly...");
 
