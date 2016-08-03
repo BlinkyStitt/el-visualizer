@@ -16,16 +16,15 @@
 #define BUTTON_INTERVAL 20
 #define DEBUG true    // todo: write a debug_print that uses this to print to serial
 #define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
-#define EMA_ALPHA 0.2
 #define FFT_IGNORED_BINS 2  // skip the first FFT_IGNORED_BINS * FFT_HZ_PER_BIN Hz
 #define INPUT_NUM_OUTPUTS_KNOB 15
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
 #define MAX_OFF_MS 6000
 #define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
-const int minimumOnMs = 200;
+const int minimumOnMs = 180;
 
-float minInputSensitivity = 0.035;
+float minInputSensitivity = 0.035;  // keep this above the whine of the inverter
 
 // TODO: tune these to look pretty
 const int morseDitMs = 250;
@@ -36,6 +35,7 @@ const int morseWordSpaceMs = morseDitMs * 7;
  * END you can easily customize these
  */
 
+#define BETWEEN(value, min, max) (value < max && value > min)
 #define FFT_HZ_PER_BIN 43
 #define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
 #define OUTPUT_A 0
@@ -368,7 +368,7 @@ void setup() {
   // todo: autoVolume?
 
   // setup outputs
-  for (int i=0; i<MAX_OUTPUTS; i++) {
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
     pinMode(outputPins[i], OUTPUT);
   }
 
@@ -415,8 +415,6 @@ elapsedMillis nowMs = 0;    // todo: do we care if this overflows?
 int blinkOutput = OUTPUT_A;
 int numOutputs = 1;
 
-// Exponential Moving Average of each wire individually and then all the wires together
-float avgInputLevel[MAX_OUTPUTS + 1];
 float lastLoudestLevel = 0;
 
 unsigned long lastOnMs;
@@ -444,49 +442,61 @@ void updateNumOutputs() {
     digitalWrite(outputPins[i], LOW);
   }
 
-  /*
-    // max of 512 * 43 Hz == 22k Hz
-    // 16k Hz = 372
-    // 10k Hz = 233
-    // 5k Hz = 116
-
-    Sub-bass       20 to  60 Hz        40     1        1
-    Bass           60 to 250 Hz       190     4.75     2
-    Low midrange  250 to 500 Hz       250     6.25     4
-    Midrange      500 Hz to 2 kHz    1500    37.5      8
-    Upper midrange  2 to 4 kHz       2000    50       16
-    Presence        4 to 6 kHz       2000    50       32
-    Brilliance      6 to 20 kHz     14000   350       64
-
-    // http://www.phy.mtu.edu/~suits/notefreqs.html
-    The basic formula for the frequencies of the notes of the equal tempered scale is given by
-    fn = f0 * (a)n
-    where
-    f0 = the frequency of one fixed note which must be defined. A common choice is setting the A above middle C (A4) at f0 = 440 Hz.
-    n = the number of half steps away from the fixed note you are. If you are at a higher note, n is positive. If you are on a lower note, n is negative.
-    fn = the frequency of the note n half steps away.
-    a = (2)^(1/12) = the twelth root of 2 = the number which when multiplied by itself 12 times equals 2 = 1.059463094359...
-   */
+  // https://en.wikipedia.org/wiki/Piano_key_frequencies
+  // TODO! TUNE THESE
   switch(numOutputs) {
-    // TODO! TUNE THIS AND FILL OUT THE REST
     case 1:
-      // everything averaged together
-      outputBins[0] = (6000 / 43);
+      outputBins[0] = 82;  // todo: tune this
       break;
     case 2:
-      outputBins[0] = (440 / 43);  // everything below 440 Hz
-      outputBins[1] = (6000 / 43);  // everything below 6 kHz
+      outputBins[0] = 10;  // everything below 440 Hz
+      outputBins[1] = 82;  // everything below 6 kHz
+      break;
+    case 3:
+      outputBins[0] = 6;   // todo: tune this
+      outputBins[1] = 10;  // todo: tune this
+      outputBins[2] = 82;  // todo: tune this
+      break;
+    case 4:
+      outputBins[0] = 3;   // todo: tune this
+      outputBins[1] = 6;   // todo: tune this
+      outputBins[2] = 10;  // todo: tune this
+      outputBins[3] = 82;  // todo: tune this
+      break;
+    case 5:
+      outputBins[0] = 3;   // todo: tune this
+      outputBins[1] = 6;   // todo: tune this
+      outputBins[2] = 10;  // todo: tune this
+      outputBins[3] = 41;  // todo: tune this
+      outputBins[4] = 82;  // todo: tune this
       break;
     case 6:
-      // TODO! TUNE THIS.
-      outputBins[0] = 6;  // round(250 / 43)
-      outputBins[1] = 12;  // round(500 / 43)
-      outputBins[2] = 47;  // round(2000 / 43)
-      outputBins[3] = 79;  // round(3000 / 43)
-      outputBins[4] = 93;  // round(4000 / 43)
-      outputBins[5] = 128;  // round(5500 / 43)
+      outputBins[0] = 3;   // 110
+      outputBins[1] = 6;   // 220
+      outputBins[2] = 10;  // 440
+      outputBins[3] = 20;  // 880
+      outputBins[4] = 41;  // 1760
+      outputBins[5] = 82;  // todo: tune this
       break;
-    // todo: maybe a default case that just does a simple formula with bigger buckets at the end
+    case 7:
+      outputBins[0] = 3;   // 110
+      outputBins[1] = 6;   // 220
+      outputBins[2] = 10;  // 440
+      outputBins[3] = 20;  // 880
+      outputBins[4] = 41;  // 1760
+      outputBins[5] = 82;  // 3520
+      outputBins[6] = 97;  // todo: tune this
+      break;
+    case 8:
+      outputBins[0] = 3;   // 110
+      outputBins[1] = 6;   // 220
+      outputBins[2] = 10;  // 440
+      outputBins[3] = 20;  // 880
+      outputBins[4] = 41;  // 1760
+      outputBins[5] = 82;  // 3520
+      outputBins[6] = 164;  // todo: tune this
+      outputBins[7] = 186;  // todo: tune this
+      break;
   }
 
   // blink the new number of outputs on all the wires
@@ -531,9 +541,7 @@ void updateOutputStatesFromFFT() {
     Serial.print(inputSensitivity, 3);
     Serial.print(" across ");
     Serial.print(numOutputs);
-    Serial.print(" outputs (");
-    Serial.print(avgInputLevel[MAX_OUTPUTS]);
-    Serial.print(" avg): | ");
+    Serial.print(" outputs: | ");
     // END DEBUGGING
 
     float inputLevelAccumulator = 0;
@@ -544,21 +552,41 @@ void updateOutputStatesFromFFT() {
         numOutputBins = 1;
       }
 
+      // TODO! tune this
       // .read(x, y) gives us a sum of bins x through y so we divide to keep the average
-      float inputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
+      //float inputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
 
-      // record exponential moving average of the inputLevel
-      avgInputLevel[outputId] += EMA_ALPHA * (inputLevel - avgInputLevel[outputId]);
+      /*
+      // skip bin 46 and 47 (2000 Hz) because the 12v inverter constantly whines there
+      if BETWEEN(46, outputStartBin - 1, nextOutputStartBin) {
+        Serial.print("* ");
+        Serial.print(inputLevel, 3);
+        inputLevel -= myFFT.read(46) / (float)(numOutputBins * 2);
+        Serial.print("* ");
+        Serial.print(inputLevel, 3);
+        Serial.print("* ");
+      }
+      if BETWEEN(47, outputStartBin - 1, nextOutputStartBin) {
+        Serial.print("* ");
+        Serial.print(inputLevel, 3);
+        inputLevel -= myFFT.read(47) / (float)(numOutputBins * 2);
+        Serial.print("* ");
+        Serial.print(inputLevel, 3);
+        Serial.print("* ");
+      }
+      */
 
-      // go numb to sounds that are louder than the average inputLevel for this outputId
-      if (avgInputLevel[outputId] > inputSensitivity) {
-        inputLevel -= avgInputLevel[outputId] * 1;    // todo: tune this
-
-        // but don't go negative.
-        if (inputLevel < 0) {
-          inputLevel = 0;
+      // todo: would it be better to just look at the max across any of them?
+      // todo: average of top 3 numbers?
+      float inputLevel = 0;
+      for (int binId = outputStartBin; binId < nextOutputStartBin; binId++) {
+        float binInputLevel = myFFT.read(binId);
+        if (binInputLevel > inputLevel) {
+          inputLevel = binInputLevel;
         }
       }
+
+      // TODO: go numb to sounds that are constantly loud? bump sounds that are constantly quiet?
 
       // save our loudest (modified) level
       if (inputLevel > lastLoudestLevel) {
@@ -601,7 +629,7 @@ void updateOutputStatesFromFFT() {
           Serial.print(inputLevel, 3);
           lastOnMsArray[outputId] = lastOnMs;
         } else {
-          lastOnMsArray[outputId] += 25;    // todo: tune this. add a variable amount based on how far into the window we are?
+          // ignore this input since we recently turned this light on
           Serial.print(" -   ");
         }
       } else {
@@ -610,6 +638,7 @@ void updateOutputStatesFromFFT() {
           // don't actually turn off here because that might break the morse code
           outputStates[outputId] = LOW;
           Serial.print("     ");   // we turned the output off. show blank space
+          //Serial.print(inputLevel, 3);
         } else {
           Serial.print(" .   ");   // we left the output on
         }
@@ -620,8 +649,6 @@ void updateOutputStatesFromFFT() {
       outputStartBin = nextOutputStartBin;
     }
     Serial.println();
-
-    avgInputLevel[MAX_OUTPUTS] += EMA_ALPHA * (inputLevelAccumulator - avgInputLevel[MAX_OUTPUTS]);   // todo: not sure about this
   }
 }
 

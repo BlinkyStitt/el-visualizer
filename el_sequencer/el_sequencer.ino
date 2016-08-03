@@ -14,7 +14,8 @@
  * todo: define or const?
  */
 #define MAX_OFF_MS 7000  // keep this longer than the MAX_OFF_MS in the teensy code
-int numOutputs = 1;  // this grows when inputs are turned on  // todo: a button on the board to configure this would be nice, but we need spare pins
+
+const bool randomizeOutputs = true; // todo: move this to the teensy so we can read this setting off the sd card
 /*
  * END you can easily customize these
  */
@@ -82,6 +83,7 @@ void bubbleUnsort(int *list, int elem) {
  */
 
 int randomizedOutputIds[MAX_WIRES];
+int numOutputs = 1;  // this grows when inputs are turned on  // todo: a button on the board to configure this would be nice, but we need spare pins
 
 void updateNumOutputs() {
   int oldNumOutputs = numOutputs;
@@ -122,12 +124,21 @@ elapsedMillis blinkTime = 0;
 bool outputState[MAX_WIRES];
 
 void loop() {
+
   updateNumOutputs();
 
-  // todo: change this to support 8 inputs once we use a multiplexer
+  // todo: change this to support 8 inputs once we use a multiplexer since we wont simply be reading 6 inputs
   for (int i = 0; i < MAX_WIRES; i++) {
-    int outputId = randomizedOutputIds[i];
-    if (analogRead(inputPins[i]) > 500) {  // read everything as analog since some pins can't do digital reads
+    int outputId;
+    if (randomizeOutputs) {
+      outputId = randomizedOutputIds[i];
+    } else {
+      outputId = i;
+    }
+
+    int inputValue = analogRead(inputPins[i]);
+
+    if (inputValue > 500) {  // read everything as analog since some pins can't do digital reads
       outputState[outputId] = HIGH;
       blinkTime = 0;
 
@@ -140,6 +151,7 @@ void loop() {
       outputState[outputId] = LOW;
     }
   }
+  Serial.println();
 
   if (blinkTime < MAX_OFF_MS) {
     // we turned a light on recently. send output states to the wires
@@ -148,13 +160,13 @@ void loop() {
     for (int i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], outputState[i]);
       if (outputState[i]) {
-        Serial.print(outputState[i]);
+        //Serial.print(outputState[i]);
       } else {
-        Serial.print(" ");
+        //Serial.print(" ");
       }
-      Serial.print(" | ");
+      //Serial.print(" | ");
     }
-    Serial.println();
+    //Serial.println();
   } else {
     Serial.println("Blinking randomly...");
 
