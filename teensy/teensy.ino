@@ -20,7 +20,7 @@
 #define INPUT_NUM_OUTPUTS_KNOB 15
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
 #define MAX_OFF_MS 6000
-#define MINIMUM_INPUT_RANGE 0.50  // activate outputs on sounds that are at least this % as loud as the loudest sound
+#define MINIMUM_INPUT_RANGE 0.80  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
 const int minimumOnMs = 180;
 
@@ -528,6 +528,7 @@ void updateOutputStatesFromFFT() {
     int outputStartBin = FFT_IGNORED_BINS;  // ignore the first FFT_IGNORED_BINS bins as they can be far too noisy
 
     // set the overall sensitivity based on how loud the previous inputs were
+    // todo: i think this should be an exponential moving average
     float inputSensitivity = lastLoudestLevel * MINIMUM_INPUT_RANGE;
     if (inputSensitivity < minInputSensitivity) {
       inputSensitivity = minInputSensitivity;
