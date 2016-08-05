@@ -12,7 +12,7 @@
  *
  * todo: define or const?
  */
-#define EMA_ALPHA 0.02    // todo: tune this
+#define NUMB_EMA_ALPHA 0.02    // alpha for calculating background sound to ignore
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
 #define DEBUG true    // todo: write a debug_print that uses this to print to serial
@@ -478,8 +478,8 @@ void updateNumOutputs() {
       outputBins[1] = 6;   // 220
       outputBins[2] = 10;  // 440
       outputBins[3] = 20;  // 880
-      outputBins[4] = 41;  // 1760
-      outputBins[5] = 82;  // todo: tune this
+      outputBins[4] = 82;  // skip 1760 and jump to 3520
+      outputBins[5] = 186;  // 7998 todo: tune this
       break;
     case 7:
       outputBins[0] = 3;   // 110
@@ -557,46 +557,16 @@ void updateOutputStatesFromFFT() {
         numOutputBins = 1;
       }
 
-      // TODO! tune this
-      // .read(x, y) gives us a sum of bins x through y so we divide to keep the average
-      //float inputLevel = myFFT.read(outputStartBin, nextOutputStartBin - 1) / (float)numOutputBins;
-
-      /*
-      // skip bin 46 and 47 (2000 Hz) because the 12v inverter constantly whines there
-      if BETWEEN(46, outputStartBin - 1, nextOutputStartBin) {
-        Serial.print("* ");
-        Serial.print(inputLevel, 3);
-        inputLevel -= myFFT.read(46) / (float)(numOutputBins * 2);
-        Serial.print("* ");
-        Serial.print(inputLevel, 3);
-        Serial.print("* ");
-      }
-      if BETWEEN(47, outputStartBin - 1, nextOutputStartBin) {
-        Serial.print("* ");
-        Serial.print(inputLevel, 3);
-        inputLevel -= myFFT.read(47) / (float)(numOutputBins * 2);
-        Serial.print("* ");
-        Serial.print(inputLevel, 3);
-        Serial.print("* ");
-      }
-      */
-
-      // todo: would it be better to just look at the max across any of them?
-      // todo: average of top 3 numbers?
+      // find the loudest bin in this outputs frequency range
       float inputLevel = 0;
       for (int binId = outputStartBin; binId < nextOutputStartBin; binId++) {
         float binInputLevel = myFFT.read(binId);
 
-        avgInputLevel[binId] += EMA_ALPHA * (binInputLevel - avgInputLevel[binId]);
-        //avgInputLevel[binId] = binInputLevel;  // todo: make this an EMA
-
-        // this is going to be very verbose
-        //Serial.print(avgInputLevel[binId], 3);
-        //Serial.print(" - ");
+        avgInputLevel[binId] += NUMB_EMA_ALPHA * (binInputLevel - avgInputLevel[binId]);
 
         // go numb to sounds that are constantly loud
         binInputLevel -= avgInputLevel[binId];
-
+q
         if (binInputLevel > inputLevel) {
           inputLevel = binInputLevel;
         }
