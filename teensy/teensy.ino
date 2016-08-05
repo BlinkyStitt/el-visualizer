@@ -12,11 +12,11 @@
  *
  * todo: define or const?
  */
+#define EMA_ALPHA 0.02    // todo: tune this
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
 #define DEBUG true    // todo: write a debug_print that uses this to print to serial
-#define DEFAULT_MORSE_STRING "HELLO WORLD"  // what to blink if no morse.txt on the SD card
-#define FFT_IGNORED_BINS 2  // skip the first FFT_IGNORED_BINS * FFT_HZ_PER_BIN Hz
+#define FFT_IGNORED_BINS 1  // skip the first FFT_IGNORED_BINS * FFT_HZ_PER_BIN Hz
 #define INPUT_NUM_OUTPUTS_KNOB 15
 #define MAX_MORSE_ARRAY_LENGTH 256  // todo: tune this
 #define MAX_OFF_MS 6000
@@ -24,7 +24,7 @@
 
 const int minimumOnMs = 180;
 
-float minInputSensitivity = 0.035;  // keep this above the whine of the inverter
+float minInputSensitivity = 0.060;  // keep this above the whine of the inverter
 
 // TODO: tune these to look pretty
 const int morseDitMs = 250;
@@ -37,6 +37,7 @@ const int morseWordSpaceMs = morseDitMs * 7;
 
 #define BETWEEN(value, min, max) (value < max && value > min)
 #define FFT_HZ_PER_BIN 43
+#define MAX_FFT_BINS 512
 #define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
 #define OUTPUT_A 0
 #define OUTPUT_B 1
@@ -419,7 +420,9 @@ float lastLoudestLevel = 0;
 
 unsigned long lastOnMs;
 unsigned long lastOnMsArray[MAX_OUTPUTS];
-int outputStates[MAX_OUTPUTS];
+bool outputStates[MAX_OUTPUTS];
+
+float avgInputLevel[MAX_FFT_BINS];
 
 int lastMorseCommandId = -1;
 
@@ -529,6 +532,7 @@ void updateOutputStatesFromFFT() {
 
     // set the overall sensitivity based on how loud the previous inputs were
     // todo: i think this should be an exponential moving average
+    // todo: we might want to do this for the current data instead of using last data
     float inputSensitivity = lastLoudestLevel * MINIMUM_INPUT_RANGE;
     if (inputSensitivity < minInputSensitivity) {
       inputSensitivity = minInputSensitivity;
@@ -582,12 +586,23 @@ void updateOutputStatesFromFFT() {
       float inputLevel = 0;
       for (int binId = outputStartBin; binId < nextOutputStartBin; binId++) {
         float binInputLevel = myFFT.read(binId);
+
+        avgInputLevel[binId] += EMA_ALPHA * (binInputLevel - avgInputLevel[binId]);
+        //avgInputLevel[binId] = binInputLevel;  // todo: make this an EMA
+
+        // this is going to be very verbose
+        //Serial.print(avgInputLevel[binId], 3);
+        //Serial.print(" - ");
+
+        // go numb to sounds that are constantly loud
+        binInputLevel -= avgInputLevel[binId];
+
         if (binInputLevel > inputLevel) {
           inputLevel = binInputLevel;
         }
       }
 
-      // TODO: go numb to sounds that are constantly loud? bump sounds that are constantly quiet?
+      // do this by keeping a long moving average
 
       // save our loudest (modified) level
       if (inputLevel > lastLoudestLevel) {
@@ -610,7 +625,7 @@ void updateOutputStatesFromFFT() {
       // END DEBUGGING
       */
 
-      // turn the light on if inputLevel > inputSensitivity and this isn't a solitary sound. off otherwise
+      // turn the light on if inputLevel > inputSensitivity
       if (inputLevel > inputSensitivity) {
         /*
         // todo: this keeps skipping actual music. figure out a better way to do this
@@ -624,14 +639,14 @@ void updateOutputStatesFromFFT() {
         // save the time this output turned on. morse code waits for this to be old
         lastOnMs = nowMs;
 
+        Serial.print(inputLevel, 3);
+
         // save the time we turned on unless we are in the front X% of the minimumOnMs window of a previous on
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs * 0.80) {   // todo: tune this
           // todo: instead of setting to the true time, set to some average of the old time and the new?
-          Serial.print(inputLevel, 3);
           lastOnMsArray[outputId] = lastOnMs;
         } else {
           // ignore this input since we recently turned this light on
-          Serial.print(" -   ");
         }
       } else {
         if (nowMs - lastOnMsArray[outputId] > minimumOnMs) {
