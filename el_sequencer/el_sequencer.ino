@@ -13,7 +13,7 @@
  *
  * todo: define or const?
  */
-#define MAX_OFF_MS 10000  // keep this longer than the MAX_OFF_MS in the teensy code
+#define MAX_OFF_MS 12000  // keep this longer than the MAX_OFF_MS in the teensy code
 
 /*
  * END you can easily customize these
