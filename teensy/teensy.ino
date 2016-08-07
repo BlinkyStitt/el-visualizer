@@ -30,7 +30,7 @@ uint  minOnMs = 118;  // the shortest amount of time to leave an output on
 float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
 float numbPercent = 0.75;  // how much of the average level to subtract from the input
 
-bool  randomizeOutputs = false;  // false: increasing output ID = increasing frequency. true: randomized
+bool  randomizeOutputs = true;  // false: increasing output ID = increasing frequency. true: randomized
 
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 int   audioShieldMicGain = 63;  // decibels
@@ -373,13 +373,15 @@ void bubbleUnsort(int *list, int elem) {
     //int r = random(a+1);
     int r = rand_range(a + 1);
     if (r != a) {
+      /*
       int temp = list[a];
       list[a] = list[r];
       list[r] = temp;
+      */
       // https://betterexplained.com/articles/swap-two-variables-using-xor/
-      //list[a] = list[a] xor list[r];
-      //list[r] = list[a] xor list[r];
-      //list[a] = list[a] xor list[r];
+      list[a] = list[a] xor list[r];
+      list[r] = list[a] xor list[r];
+      list[a] = list[a] xor list[r];
     }
   }
 }
@@ -492,6 +494,7 @@ void updateNumOutputs() {
 
   // https://en.wikipedia.org/wiki/Piano_key_frequencies
   // TODO! TUNE THESE
+  // todo: read this from the sd card, too?
   switch(numOutputs) {
     case 1:
       outputBins[0] = 82;  // todo: tune this
@@ -547,23 +550,36 @@ void updateNumOutputs() {
       break;
   }
 
-  // blink the new number of outputs on all the wires
+  // blink the new number of outputs on all the outputs
   delay(morseElementSpaceMs);
+
+  // turn the lights on in order
+  // randomizedOutputIds is actually sorted if randomizeOutputs is False
   for (int i = 0; i < numOutputs; i++) {
-    // turn all the wires on
-    for (int j = 0; j < numOutputs; j++) {
-      digitalWrite(outputPins[j], HIGH);
-    }
-    // wait
-    delay(morseDitMs);
-    // turn all the wires off
-    for (int j=0; j<numOutputs; j++) {
-      digitalWrite(outputPins[j], LOW);
-    }
-    // wait
-    delay(morseElementSpaceMs);
+    digitalWrite(outputPins[randomizedOutputIds[i]], HIGH);
+    delay(morseWordSpaceMs);
   }
-  // wait
+  delay(morseDitMs);
+
+  for (int blinkCount = 0; blinkCount < numOutputs; blinkCount++) {
+    // turn all the outputs off
+    for (int outputId = 0; outputId < numOutputs; outputId++) {
+      digitalWrite(outputPins[outputId], LOW);
+    }
+    delay(morseElementSpaceMs);
+
+    // turn all the outputs on
+    for (int outputId = 0; outputId < numOutputs; outputId++) {
+      digitalWrite(outputPins[outputId], HIGH);
+    }
+    delay(morseDitMs);
+  }
+
+  // turn all the outputs off
+  for (int i = 0; i < numOutputs; i++) {
+    digitalWrite(outputPins[i], LOW);
+  }
+
   delay(morseWordSpaceMs);
 }
 
@@ -717,7 +733,13 @@ void loop() {
   if (nowMs - lastOnMs < maxOffMs) {
     // we turned a light on recently. send output states to the wires
     for (int i = 0; i < numOutputs; i++) {
-      digitalWrite(outputPins[i], outputStates[i]);
+      int outputId;
+      if (randomizeOutputs) {
+        outputId = randomizedOutputIds[i];
+      } else {
+        outputId = i;
+      }
+      digitalWrite(outputPins[outputId], outputStates[i]);
     }
     morseCommandCompleted = false;
   } else {
