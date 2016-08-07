@@ -12,6 +12,8 @@
  *
  * todo: define or const?
  */
+#define NUMB_PERCENT 0.75  // how much of the average level to subtract from the input
+#define LOUDEST_EMA_ALPHA 0.20  // alpha for calculating the loudest sound
 #define NUMB_EMA_ALPHA 0.02    // alpha for calculating background sound to ignore
 #define BUTTON_HOLD_MS 200
 #define BUTTON_INTERVAL 20
@@ -22,11 +24,11 @@
 #define MAX_OFF_MS 6000
 #define MINIMUM_INPUT_RANGE 0.80  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
-const int minimumOnMs = 180;
+unsigned int minimumOnMs = 118;  // this can be overriden by the SD card
+bool randomizeOutputs = false; // todo: move this to the teensy so we can read this setting off the sd card
 
-float minInputSensitivity = 0.060;  // keep this above the whine of the inverter
+float minInputSensitivity = 0.060;  // this can be overriden by the SD card
 
-// TODO: tune these to look pretty
 const int morseDitMs = 250;
 const int morseDahMs = morseDitMs * 3;
 const int morseElementSpaceMs = morseDitMs;
@@ -341,6 +343,35 @@ void string2morseArray(String morseString) {
   Serial.println();
 }
 
+// from http://forum.arduino.cc/index.php?topic=43424.0
+// generate a value between 0 <= x < n, thus there are n possible outputs
+int rand_range(int n) {
+  int r, ul;
+  ul = RAND_MAX - RAND_MAX % n;
+  while ((r = rand()) >= ul) {
+    ;  // get a random number that is fair
+  }
+  return r % n;
+}
+
+// from http://forum.arduino.cc/index.php?topic=43424.0
+void bubbleUnsort(int *list, int elem) {
+  for (int a = elem - 1; a > 0; a--) {
+    // todo: not sure what is better. apparently the built in random has some sort of bias?
+    //int r = random(a+1);
+    int r = rand_range(a + 1);
+    if (r != a) {
+      int temp = list[a];
+      list[a] = list[r];
+      list[r] = temp;
+      // https://betterexplained.com/articles/swap-two-variables-using-xor/
+      //list[a] = list[a] xor list[r];
+      //list[r] = list[a] xor list[r];
+      //list[a] = list[a] xor list[r];
+    }
+  }
+}
+
 /*
    END HELPER FUNCTIONS
 */
@@ -395,6 +426,10 @@ void setup() {
 
     // todo: should we just do this as we read? theres no real need to build a String besides the pretty serial.print
     string2morseArray(morseString);
+
+    // todo: read minimumOnMs from SD card
+    // todo: read minInputSensitivity from SD card
+    // todo: read randomizeOutputs from SD card
   }
 
   Serial.print("morse array length: ");
@@ -415,6 +450,7 @@ elapsedMillis nowMs = 0;    // todo: do we care if this overflows?
 
 int blinkOutput = OUTPUT_A;
 int numOutputs = 1;
+int randomizedOutputIds[MAX_OUTPUTS];
 
 float lastLoudestLevel = 0;
 
@@ -440,9 +476,18 @@ void updateNumOutputs() {
   Serial.print("New numOutputs: ");
   Serial.println(numOutputs);
 
-  // turn all the wires off
   for (int i=0; i<MAX_OUTPUTS; i++) {
+    // turn all the wires off
     digitalWrite(outputPins[i], LOW);
+
+    // put the randomized inputs back in order in case we lowered numOutputs
+    randomizedOutputIds[i] = i;
+  }
+
+  if (randomizeOutputs) {
+    // shuffle the outputs
+    bubbleUnsort(randomizedOutputIds, numOutputs);
+    bubbleUnsort(randomizedOutputIds, numOutputs);
   }
 
   // https://en.wikipedia.org/wiki/Piano_key_frequencies
@@ -464,21 +509,21 @@ void updateNumOutputs() {
       outputBins[0] = 3;   // todo: tune this
       outputBins[1] = 6;   // todo: tune this
       outputBins[2] = 10;  // todo: tune this
-      outputBins[3] = 82;  // todo: tune this
+      outputBins[3] = 186;  // todo: tune this
       break;
     case 5:
-      outputBins[0] = 3;   // todo: tune this
-      outputBins[1] = 6;   // todo: tune this
-      outputBins[2] = 10;  // todo: tune this
+      outputBins[0] = 6;   // todo: tune this
+      outputBins[1] = 10;   // todo: tune this
+      outputBins[2] = 20;  // todo: tune this
       outputBins[3] = 41;  // todo: tune this
-      outputBins[4] = 82;  // todo: tune this
+      outputBins[4] = 186;  // todo: tune this
       break;
     case 6:
       outputBins[0] = 3;   // 110
       outputBins[1] = 6;   // 220
       outputBins[2] = 10;  // 440
       outputBins[3] = 20;  // 880
-      outputBins[4] = 82;  // skip 1760 and jump to 3520
+      outputBins[4] = 41;  // 1763
       outputBins[5] = 186;  // 7998 todo: tune this
       break;
     case 7:
@@ -488,7 +533,7 @@ void updateNumOutputs() {
       outputBins[3] = 20;  // 880
       outputBins[4] = 41;  // 1760
       outputBins[5] = 82;  // 3520
-      outputBins[6] = 97;  // todo: tune this
+      outputBins[6] = 186;  // todo: tune this
       break;
     case 8:
       outputBins[0] = 3;   // 110
@@ -521,6 +566,8 @@ void updateNumOutputs() {
   // wait
   delay(morseWordSpaceMs);
 }
+
+unsigned long lastUpdate = 0;
 
 
 void updateOutputStatesFromFFT() {
@@ -562,11 +609,10 @@ void updateOutputStatesFromFFT() {
       for (int binId = outputStartBin; binId < nextOutputStartBin; binId++) {
         float binInputLevel = myFFT.read(binId);
 
+        // go numb to sounds that are constantly loud. todo: this probably needs some tuning
         avgInputLevel[binId] += NUMB_EMA_ALPHA * (binInputLevel - avgInputLevel[binId]);
+        binInputLevel -= avgInputLevel[binId] * NUMB_PERCENT;
 
-        // go numb to sounds that are constantly loud
-        binInputLevel -= avgInputLevel[binId];
-q
         if (binInputLevel > inputLevel) {
           inputLevel = binInputLevel;
         }
@@ -582,28 +628,8 @@ q
       // keep track of the sum of our modified levels so we can calculate an average later
       inputLevelAccumulator += inputLevel;
 
-      /*
-      // DEBUGGING
-      Serial.println();
-      Serial.print("Reading ");
-      Serial.print(outputStartBin);
-      Serial.print(" to ");
-      Serial.print(nextOutputStartBin - 1);
-      Serial.print(" (");
-      Serial.print(numOutputBins);
-      Serial.println(")");
-      // END DEBUGGING
-      */
-
       // turn the light on if inputLevel > inputSensitivity
       if (inputLevel > inputSensitivity) {
-        /*
-        // todo: this keeps skipping actual music. figure out a better way to do this
-        if (avgInputLevel[MAX_OUTPUTS] < inputSensitivity) {    // todo: tune this
-          // we have a loud sound, but the other outputs are quiet, so ignore it
-          Serial.print("XXX");  // input ignored
-        } else {
-        */
         outputStates[outputId] = HIGH;
 
         // save the time this output turned on. morse code waits for this to be old
@@ -634,14 +660,14 @@ q
       // prepare for the next iteration
       outputStartBin = nextOutputStartBin;
     }
-    Serial.println();
+    Serial.println(nowMs - lastUpdate);
+    lastUpdate = nowMs;
   }
 }
 
 
 bool blinkMorseCode() {
   // blink all of the wires according to morseArray
-
   bool morseCommandFound = false;
   unsigned long checkMs = MAX_OFF_MS;
   for (int morseCommandId = 0; morseCommandId < morseArrayLength; morseCommandId++) {
@@ -650,28 +676,16 @@ bool blinkMorseCode() {
     if (nowMs < checkMs) {
       if (lastMorseCommandId != morseCommandId) {
         // this is the first time we've seen this command this iteration
-        Serial.print("AudioMemoryUsageMax: ");
-        Serial.println(AudioMemoryUsageMax());
 
         // save that we've done this command already
         lastMorseCommandId = morseCommandId;
-        // DEBUGGING
-        /*
-        Serial.print(nowMs);
-        Serial.print(" < ");
-        Serial.print(checkMs);
-        Serial.print(" - Output: ");
-        Serial.print(morseOutputId);
-        Serial.print(" - Action #");
-        Serial.print(morseCommandId);
-        Serial.print(": ");
-        Serial.print(morseCommand.outputAction);
-        Serial.print(" for ");
-        Serial.print(morseCommand.checkMs);
-        Serial.println();
-        */
-        // END DEBUGGING
 
+        // randomize the outputs if this is the first command
+        if ((morseCommandId = 0) && (randomizeOutputs)) {
+          bubbleUnsort(randomizedOutputIds, numOutputs);
+        }
+
+        // todo: only do half (rounded up) of the lights?
         for (int outputId = 0; outputId < numOutputs; outputId++) {
           digitalWrite(outputId, morseCommand.outputAction);
         }
@@ -702,10 +716,15 @@ void loop() {
     }
     morseCommandCompleted = false;
   } else {
-    // no lights have been turned on for at least MAX_OFF_MS
-    // blink more code
-    // todo: play the message twice?
-    if (not morseCommandCompleted) {
+    if (morseCommandCompleted) {
+      // it is quiet and we've played our morse code message. shuffle the outputs
+      bubbleUnsort(randomizedOutputIds, numOutputs);
+      lastOnMs = lastUpdate = 0;
+      nowMs = MAX_OFF_MS;
+    } else {
+      // no lights have been turned on for at least MAX_OFF_MS
+      // blink more code
+      // todo: play the message twice?
       morseCommandCompleted = blinkMorseCode();
     }
   }

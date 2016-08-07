@@ -15,7 +15,6 @@
  */
 #define MAX_OFF_MS 10000  // keep this longer than the MAX_OFF_MS in the teensy code
 
-const bool randomizeOutputs = false; // todo: move this to the teensy so we can read this setting off the sd card
 /*
  * END you can easily customize these
  */
@@ -42,66 +41,7 @@ const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPU
 
 #include <elapsedMillis.h>
 
-/*
- * Helper functions
- */
-
-// from http://forum.arduino.cc/index.php?topic=43424.0
-// generate a value between 0 <= x < n, thus there are n possible outputs
-int rand_range(int n) {
-  int r, ul;
-
-  ul = RAND_MAX - RAND_MAX % n;
-  while ((r = rand()) >= ul)
-    ;
-
-  return r % n;
-}
-
-// from http://forum.arduino.cc/index.php?topic=43424.0
-void bubbleUnsort(int *list, int elem) {
-  for (int a = elem-1; a > 0; a--) {
-    // todo: not sure what is better. apparently the built in random has some sort of bias?
-    //int r = random(a+1);
-    int r = rand_range(a+1);
-    if (r != a) {
-      int temp = list[a];
-      list[a] = list[r];
-      list[r] = temp;
-      /*
-      // https://betterexplained.com/articles/swap-two-variables-using-xor/
-      list[a] = list[a] xor list[r];
-      list[r] = list[a] xor list[r];
-      list[a] = list[a] xor list[r];
-      */
-   }
-  }
-}
-
-/*
- * END Helper functions
- */
-
-int randomizedOutputIds[MAX_WIRES];
 int numOutputs = 1;  // this grows when inputs are turned on  // todo: a button on the board to configure this would be nice, but we need spare pins
-
-void updateNumOutputs() {
-  int oldNumOutputs = numOutputs;
-
-  // todo: read some input once we figure out how to get another analog input on the board
-
-  if (oldNumOutputs != numOutputs) {
-    // numOutputs changed
-
-    // put the randomized inputs back in order in case we lowered numOutputs
-    for (int i = 0; i<numOutputs; i++) {
-      randomizedOutputIds[i] = i;
-    }
-
-    // randomize the outputs again
-    bubbleUnsort(randomizedOutputIds, numOutputs);
-  }
-}
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this on production build
@@ -122,21 +62,12 @@ bool outputState[MAX_WIRES];
 
 void loop() {
 
-  updateNumOutputs();
-
   // todo: change this to support 8 inputs once we use a multiplexer since we wont simply be reading 6 inputs
   for (int i = 0; i < MAX_WIRES; i++) {
-    int outputId;
-    if (randomizeOutputs) {
-      outputId = randomizedOutputIds[i];
-    } else {
-      outputId = i;
-    }
-
     int inputValue = analogRead(inputPins[i]);
 
     if (inputValue > 500) {  // read everything as analog since some pins can't do digital reads
-      outputState[outputId] = HIGH;
+      outputState[i] = HIGH;
       blinkTime = 0;
 
       if (i + 1 > numOutputs) {
@@ -145,7 +76,7 @@ void loop() {
         numOutputs = i + 1;
       }
     } else {
-      outputState[outputId] = LOW;
+      outputState[i] = LOW;
     }
   }
 
@@ -167,7 +98,7 @@ void loop() {
     Serial.println("Blinking randomly...");
 
     // turn the outputs on in a random order
-    // TODO: do this with some functions and without delay calls
+    // TODO! do this with some functions and without delay calls
     bubbleUnsort(randomizedOutputIds, numOutputs);
     for (int i = 0; i < numOutputs; i++) {
       int outputId = randomizedOutputIds[i];
