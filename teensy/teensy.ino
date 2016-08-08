@@ -16,11 +16,13 @@
  */
 bool  debug = true;    // todo: write a debug_print that uses this to print to serial
 
+unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
+
 uint  fftIgnoredBins = 1;  // skip the first fftIgnoredBins * FFT_HZ_PER_BIN Hz
 
 uint  maxOffMs = 7000;  // how long to be off before blinking morse cod
 
-float minInputRange = 0.75;  // activate outputs on sounds that are at least this % as loud as the loudest sound
+float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
 float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
 float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
@@ -30,16 +32,14 @@ uint  minOnMs = 118;  // the shortest amount of time to leave an output on
 float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
 float numbPercent = 0.75;  // how much of the average level to subtract from the input
 
-bool  randomizeOutputs = true;  // false: increasing output ID = increasing frequency. true: randomized
-
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
-int   audioShieldMicGain = 63;  // decibels
+uint   audioShieldMicGain = 63;  // decibels
 
 // how long to blink for morse code
-int   morseDitMs = 250;
-int   morseDahMs = morseDitMs * 3;
-int   morseElementSpaceMs = morseDitMs;
-int   morseWordSpaceMs = morseDitMs * 7;
+uint   morseDitMs = 250;
+uint   morseDahMs = morseDitMs * 3;
+uint   morseElementSpaceMs = morseDitMs;
+uint   morseWordSpaceMs = morseDitMs * 7;
 
 /*
  * END you can easily customize these
@@ -367,7 +367,8 @@ int rand_range(int n) {
 }
 
 // from http://forum.arduino.cc/index.php?topic=43424.0
-void bubbleUnsort(int *list, int elem) {
+void bubbleUnsort(uint *list, uint elem) {
+  Serial.println("!!! Randomizing Outputs !!!");
   for (int a = elem - 1; a > 0; a--) {
     // todo: not sure what is better. apparently the built in random has some sort of bias?
     //int r = random(a+1);
@@ -427,6 +428,12 @@ void setup() {
   audioShield.volume(audioShieldVolume);  // for debugging
   audioShield.micGain(audioShieldMicGain);  // 0-63
 
+  audioShield.audioPreProcessorEnable();  // todo: pre or post?
+
+  // bass, mid_bass, midrange, mid_treble, treble
+  audioShield.eqSelect(GRAPHIC_EQUALIZER);
+  audioShield.eqBands(-0.80, -0.10, 0, 0.10, 0.33);  // todo: tune this
+
   // setup outputs
   for (int i = 0; i < MAX_OUTPUTS; i++) {
     pinMode(outputPins[i], OUTPUT);
@@ -437,19 +444,21 @@ void setup() {
 
   audioShield.unmuteHeadphone();  // for debugging
 
-  randomSeed(morseArrayLength + analogRead(0));
+  // todo: is it worth doing this better?
+  randomSeed(analogRead(0) xor analogRead(INPUT_NUM_OUTPUTS_KNOB));
 
   Serial.println("Waiting for EL Sequencer...");
-  delay(500);
+  delay(100);
 
   Serial.println("Starting...");
 }
 
 
-elapsedMillis nowMs = 0;    // todo: do we care if this overflows?
+elapsedMillis elapsedMsForLastOutput = 0;    // todo: do we care if this overflows?
+elapsedMillis elapsedMsForRandomization = 0;
 
-int           numOutputs = 1;
-int           randomizedOutputIds[MAX_OUTPUTS];
+uint          numOutputs = 1;   // this will be updated by a knob
+uint          randomizedOutputIds[MAX_OUTPUTS];
 
 float         lastLoudestLevel = minOnMs;
 
@@ -467,8 +476,8 @@ float         inputSensitivity = minInputSensitivity;
 
 void updateNumOutputs() {
   // configure number of outputs
-  int oldNumOutputs = numOutputs;
-  numOutputs = (int)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
+  uint oldNumOutputs = numOutputs;
+  numOutputs = (uint)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
 
   if (oldNumOutputs == numOutputs) {
     return;
@@ -486,9 +495,10 @@ void updateNumOutputs() {
     randomizedOutputIds[i] = i;
   }
 
-  if (randomizeOutputs) {
+  if (randomizeOutputMs) {
     // shuffle the outputs
     bubbleUnsort(randomizedOutputIds, numOutputs);
+    // do it twice since we started off ordered
     bubbleUnsort(randomizedOutputIds, numOutputs);
   }
 
@@ -554,29 +564,29 @@ void updateNumOutputs() {
   delay(morseElementSpaceMs);
 
   // turn the lights on in order
-  // randomizedOutputIds is actually sorted if randomizeOutputs is False
-  for (int i = 0; i < numOutputs; i++) {
+  // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
+  for (uint i = 0; i < numOutputs; i++) {
     digitalWrite(outputPins[randomizedOutputIds[i]], HIGH);
     delay(morseWordSpaceMs);
   }
   delay(morseDitMs);
 
-  for (int blinkCount = 0; blinkCount < numOutputs; blinkCount++) {
+  for (uint blinkCount = 0; blinkCount < numOutputs; blinkCount++) {
     // turn all the outputs off
-    for (int outputId = 0; outputId < numOutputs; outputId++) {
+    for (uint outputId = 0; outputId < numOutputs; outputId++) {
       digitalWrite(outputPins[outputId], LOW);
     }
     delay(morseElementSpaceMs);
 
     // turn all the outputs on
-    for (int outputId = 0; outputId < numOutputs; outputId++) {
+    for (uint outputId = 0; outputId < numOutputs; outputId++) {
       digitalWrite(outputPins[outputId], HIGH);
     }
     delay(morseDitMs);
   }
 
   // turn all the outputs off
-  for (int i = 0; i < numOutputs; i++) {
+  for (uint i = 0; i < numOutputs; i++) {
     digitalWrite(outputPins[i], LOW);
   }
 
@@ -588,8 +598,8 @@ void updateOutputStatesFromFFT() {
   // parse FFT data
   // The 1024 point FFT always updates at approximately 86 times per second.
   if (myFFT.available()) {
-    int numOutputBins, nextOutputStartBin;
-    int outputStartBin = fftIgnoredBins;  // ignore the first fftIgnoredBins bins as they can be far too noisy
+    uint numOutputBins, nextOutputStartBin;
+    uint outputStartBin = fftIgnoredBins;  // ignore the first fftIgnoredBins bins as they can be far too noisy
 
     // set the overall sensitivity based on how loud the previous inputs were
     // todo: i think this should be an exponential moving average
@@ -597,6 +607,8 @@ void updateOutputStatesFromFFT() {
     inputSensitivity += minInputSensitivityEMAAlpha * (max(lastLoudestLevel * minInputRange, minInputSensitivity) - inputSensitivity);
     if (inputSensitivity < minInputSensitivity) {
       inputSensitivity = minInputSensitivity;
+    } else if (inputSensitivity > 1) {
+      inputSensitivity = 1;
     }
 
     // now that we've used lastLoudestLevel, reset it to 0 so we can get the latest.
@@ -611,7 +623,7 @@ void updateOutputStatesFromFFT() {
     // END DEBUGGING
 
     float inputLevelAccumulator = 0;
-    for (int outputId = 0; outputId < numOutputs; outputId++) {
+    for (uint outputId = 0; outputId < numOutputs; outputId++) {
       nextOutputStartBin = outputBins[outputId] + 1;
       numOutputBins = nextOutputStartBin - outputStartBin;
       if (numOutputBins < 1) {
@@ -620,7 +632,7 @@ void updateOutputStatesFromFFT() {
 
       // find the loudest bin in this outputs frequency range
       float inputLevel = 0;
-      for (int binId = outputStartBin; binId < nextOutputStartBin; binId++) {
+      for (uint binId = outputStartBin; binId < nextOutputStartBin; binId++) {
         float binInputLevel = myFFT.read(binId);
 
         // go numb to sounds that are constantly loud. todo: this probably needs some tuning
@@ -647,10 +659,10 @@ void updateOutputStatesFromFFT() {
         outputStates[outputId] = HIGH;
 
         // save the time this output turned on. morse code waits for this to be old
-        lastOnMs = nowMs;
+        lastOnMs = elapsedMsForLastOutput;
 
         // save the time we turned on unless we are in the front X% of the minOnMs window of a previous on
-        if (nowMs - lastOnMsArray[outputId] > minOnMs * 0.80) {   // todo: tune this
+        if (elapsedMsForLastOutput - lastOnMsArray[outputId] > minOnMs * 0.80) {   // todo: tune this
           // todo: instead of setting to the true time, set to some average of the old time and the new?
           lastOnMsArray[outputId] = lastOnMs;
           Serial.print("*");
@@ -661,7 +673,7 @@ void updateOutputStatesFromFFT() {
 
         Serial.print(inputLevel - inputSensitivity, 3);
       } else {
-        if (nowMs - lastOnMsArray[outputId] > minOnMs) {
+        if (elapsedMsForLastOutput - lastOnMsArray[outputId] > minOnMs) {
           // the output has been on for at least minOnMs. turn it off
           // don't actually turn off here because that might break the morse code
           outputStates[outputId] = LOW;
@@ -678,10 +690,10 @@ void updateOutputStatesFromFFT() {
     }
     Serial.print(AudioMemoryUsageMax());
     Serial.print(" blocks | ");
-    Serial.print(nowMs - lastUpdate);
+    Serial.print(elapsedMsForLastOutput - lastUpdate);
     Serial.println("ms");
 
-    lastUpdate = nowMs;
+    lastUpdate = elapsedMsForLastOutput;
   }
 }
 
@@ -693,7 +705,7 @@ bool blinkMorseCode() {
   for (int morseCommandId = 0; morseCommandId < morseArrayLength; morseCommandId++) {
     TimedAction morseCommand = morseArray[morseCommandId];
     checkMs += morseCommand.checkMs;
-    if (nowMs < checkMs) {
+    if (elapsedMsForLastOutput < checkMs) {
       if (lastMorseCommandId != morseCommandId) {
         // this is the first time we've seen this command this iteration
 
@@ -701,12 +713,12 @@ bool blinkMorseCode() {
         lastMorseCommandId = morseCommandId;
 
         // randomize the outputs if this is the first command
-        if ((morseCommandId = 0) && (randomizeOutputs)) {
+        if ((morseCommandId = 0) && (randomizeOutputMs)) {
           bubbleUnsort(randomizedOutputIds, numOutputs);
         }
 
         // todo: only do half (rounded up) of the lights?
-        for (int outputId = 0; outputId < numOutputs; outputId++) {
+        for (uint outputId = 0; outputId < numOutputs; outputId++) {
           digitalWrite(outputId, morseCommand.outputAction);
         }
       }
@@ -730,29 +742,31 @@ void loop() {
 
   // todo: check our buttons to see if we should update minInputSensitivity
 
-  if (nowMs - lastOnMs < maxOffMs) {
+  if (randomizeOutputMs && (elapsedMsForRandomization > randomizeOutputMs)) {
+    bubbleUnsort(randomizedOutputIds, numOutputs);
+    elapsedMsForRandomization = 0;
+  }
+
+  if (elapsedMsForLastOutput - lastOnMs < maxOffMs) {
     // we turned a light on recently. send output states to the wires
-    for (int i = 0; i < numOutputs; i++) {
-      int outputId;
-      if (randomizeOutputs) {
-        outputId = randomizedOutputIds[i];
-      } else {
-        outputId = i;
-      }
-      digitalWrite(outputPins[outputId], outputStates[i]);
+    for (uint i = 0; i < numOutputs; i++) {
+      // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
+      digitalWrite(outputPins[randomizedOutputIds[i]], outputStates[i]);
     }
     morseCommandCompleted = false;
   } else {
     if (morseCommandCompleted) {
-      // it is quiet and we've played our morse code message. shuffle the outputs
-      bubbleUnsort(randomizedOutputIds, numOutputs);
+      // it is quiet and we've played our morse code message
       lastOnMs = lastUpdate = 0;
-      nowMs = maxOffMs;
+      elapsedMsForLastOutput = maxOffMs;
+
+      // todo: blink pretty
     } else {
       // no lights have been turned on for at least maxOffMs
       // blink more code
-      // todo: play the message twice?
       morseCommandCompleted = blinkMorseCode();
+
+      // todo: play the message twice?
     }
   }
 }
