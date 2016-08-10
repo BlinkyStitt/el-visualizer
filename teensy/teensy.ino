@@ -60,7 +60,7 @@ uint  morseWordSpaceMs = morseDitMs * 7;
 #define OUTPUT_PIN_F 5
 // pins 6, 7, 9, 10, 18, 19, 11, 12, 13, 14, 15, 22, 23 are used by the audio shield
 #define OUTPUT_PIN_G 8
-#define INPUT_PIN_NUM_OUTPUTS 16
+#define INPUT_PIN_VOLUME 15
 #define OUTPUT_PIN_H 20
 const int outputPins[MAX_OUTPUTS] = {OUTPUT_PIN_A, OUTPUT_PIN_B, OUTPUT_PIN_C, OUTPUT_PIN_D, OUTPUT_PIN_E, OUTPUT_PIN_F, OUTPUT_PIN_G, OUTPUT_PIN_H};
 int outputBins[MAX_OUTPUTS];
@@ -592,13 +592,11 @@ void updateNumOutputs(uint& numOutputs) {
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
-
-  delay(500);  // todo: do we need this?
-
+  delay(100);
   Serial.println("Starting...");
 
   // todo: is it worth doing this better?
-  randomSeed(analogRead(0) xor analogRead(INPUT_PIN_NUM_OUTPUTS));
+  randomSeed(analogRead(0) * analogRead(INPUT_PIN_VOLUME));
 
   // read text off the SD card and translate it into morse code
   String morseString = "";
@@ -660,9 +658,6 @@ void setup() {
   for (int i = 0; i < MAX_OUTPUTS; i++) {
     pinMode(outputPins[i], OUTPUT);
   }
-
-  // setup numOutputs knob
-  pinMode(INPUT_PIN_NUM_OUTPUTS, INPUT);
 
   audioShield.unmuteHeadphone();  // for debugging
 
@@ -766,11 +761,11 @@ void updateOutputStatesFromFFT() {
       // prepare for the next iteration
       outputStartBin = nextOutputStartBin;
     }
+
     Serial.print(AudioMemoryUsageMax());
     Serial.print(" blocks | ");
     Serial.print(elapsedMsForLastOutput - lastUpdate);
     Serial.println("ms");
-
     lastUpdate = elapsedMsForLastOutput;
   }
 }
