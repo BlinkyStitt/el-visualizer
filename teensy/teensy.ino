@@ -31,8 +31,8 @@ uint  minOnMs = 118;  // the shortest amount of time to leave an output on
 
 uint  numOutputs = 6;   // this will be updated by a file on the SD card
 
-float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
-float numbPercent = 0.25;  // how much of the average level to subtract from the input. TODO! TUNE THIS
+float numbEMAAlpha = 0.005;  // alpha for calculating background sound to ignore. do how should we do this?
+float numbPercent = 0.50;  // how much of the average level to subtract from the input. TODO! TUNE THIS
 
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 uint  audioShieldMicGain = 63;  // decibels
@@ -105,6 +105,9 @@ int           lastMorseCommandId = -1;
 
 unsigned long lastUpdate = 0;
 float         inputSensitivity = minInputSensitivity;
+
+
+bool          morseCommandCompleted = false;
 
 
 // todo: this morse stuff should probably be in its own class, but it works
@@ -415,6 +418,8 @@ String filename2string(const char* filename) {
   // read the first line of a file and return it as a String
   File file = SD.open(filename, FILE_READ);
 
+  delay(20);  // debugging
+
   String str = "";
 
   // if the file is available, read it:
@@ -441,7 +446,7 @@ String filename2string(const char* filename) {
   return "";
 }
 
-void updateConfigBool(const char* filename, bool& bool_ref) {
+void updateConfigBool(const char* filename, bool& config_ref) {
   // this could by DRYer
 
   String override = filename2string(filename);
@@ -449,16 +454,15 @@ void updateConfigBool(const char* filename, bool& bool_ref) {
     Serial.print("Default for ");
   } else {
     Serial.print("Override for ");
-    bool_ref = override == "true";
+    config_ref = override == "true";
   }
 
   Serial.print(filename);
   Serial.print(" (bool): ");
-  Serial.println(bool_ref);
-  Serial.println();
+  Serial.println(config_ref);
 }
 
-void updateConfigUint(const char* filename, uint& uint_ref) {
+void updateConfigUint(const char* filename, uint& config_ref) {
   // this could by DRYer
 
   String override = filename2string(filename);
@@ -467,16 +471,53 @@ void updateConfigUint(const char* filename, uint& uint_ref) {
   } else {
     Serial.print("Override for ");
     // toInt actually returns a long...
-    uint_ref = (uint)override.toInt();
+    config_ref = (uint)override.toInt();
   }
 
   Serial.print(filename);
   Serial.print(" (uint): ");
-  Serial.println(uint_ref);
+  Serial.println(config_ref);
+}
+
+void updateConfigFloat(const char* filename, float& config_ref) {
+  // this could by DRYer
+
+  String override = filename2string(filename);
+  if (override == "") {
+    Serial.print("Default for ");
+  } else {
+    Serial.print("Override for ");
+    // toInt actually returns a long...
+    config_ref = override.toFloat();
+  }
+
+  Serial.print(filename);
+  Serial.print(" (float): ");
+  Serial.println(config_ref);
+}
+
+void updateConfigUlong(const char* filename, unsigned long& config_ref) {
+  // this could by DRYer
+
+  String override = filename2string(filename);
+  if (override == "") {
+    Serial.print("Default for ");
+  } else {
+    Serial.print("Override for ");
+    // toInt actually returns a long...
+    config_ref = (unsigned long)override.toInt();
+  }
+
+  Serial.print(filename);
+  Serial.print(" (ulong): ");
+  Serial.println(config_ref);
 }
 
 
 void updateNumOutputs(uint& numOutputs) {
+  Serial.print("numOutputs: ");
+  Serial.println(numOutputs);
+
   for (int i=0; i<MAX_OUTPUTS; i++) {
     // turn all the wires off
     digitalWrite(outputPins[i], LOW);
@@ -551,37 +592,39 @@ void updateNumOutputs(uint& numOutputs) {
   }
 
   // blink the new number of outputs on all the outputs
-  delay(morseElementSpaceMs);
-
-  // turn the lights on in order
-  // todo: do this after flashing the number
-  // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
-  for (uint i = 0; i < numOutputs; i++) {
-    digitalWrite(outputPins[randomizedOutputIds[i]], HIGH);
-    delay(morseWordSpaceMs);
-  }
-  delay(morseDitMs);
+  Serial.println("Blinking numOutputs...");
 
   for (uint blinkCount = 0; blinkCount < numOutputs; blinkCount++) {
-    // turn all the outputs off
-    for (uint outputId = 0; outputId < numOutputs; outputId++) {
-      digitalWrite(outputPins[outputId], LOW);
-    }
-    delay(morseElementSpaceMs);
-
     // turn all the outputs on
     for (uint outputId = 0; outputId < numOutputs; outputId++) {
       digitalWrite(outputPins[outputId], HIGH);
     }
     delay(morseDitMs);
-  }
 
-  // turn all the outputs off
-  for (uint i = 0; i < numOutputs; i++) {
-    digitalWrite(outputPins[i], LOW);
+    // turn all the outputs off
+    for (uint outputId = 0; outputId < numOutputs; outputId++) {
+      digitalWrite(outputPins[outputId], LOW);
+    }
+    delay(morseElementSpaceMs);
   }
-
   delay(morseWordSpaceMs);
+
+  if (randomizeOutputMs) {
+    // turn the lights on in the randomized order
+    Serial.println("Showing random...");
+    // todo: do this after flashing the number
+    // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
+    for (uint i = 0; i < numOutputs; i++) {
+      digitalWrite(outputPins[randomizedOutputIds[i]], HIGH);
+      delay(morseDahMs);
+    }
+    delay(morseElementSpaceMs);
+
+    // turn all the outputs off
+    for (uint i = 0; i < numOutputs; i++) {
+      digitalWrite(outputPins[i], LOW);
+    }
+  }
 }
 
 
@@ -592,7 +635,7 @@ void updateNumOutputs(uint& numOutputs) {
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
-  delay(100);
+  delay(500);
   Serial.println("Starting...");
 
   // todo: is it worth doing this better?
@@ -607,37 +650,39 @@ void setup() {
     // todo: should we just do this as we read? theres no real need to build a String
     string2morseArray(filename2string("morse.txt"));
 
-    // TODO: load all the config files here
-    /*
-    bool  debug = true;    // todo: write a debug_print that uses this to print to serial
-    unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
-    uint  fftIgnoredBins = 1;  // skip the first fftIgnoredBins * FFT_HZ_PER_BIN Hz
-    uint  maxOffMs = 7000;  // how long to be off before blinking morse cod
-    float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
-    float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
-    float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
-    uint  minOnMs = 118;  // the shortest amount of time to leave an output on
-    float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
-    float numbPercent = 0.25;  // how much of the average level to subtract from the input. TODO! TUNE THIS
-    float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
-    uint  audioShieldMicGain = 63;  // decibels
-    uint  morseDitMs = 250;
-    uint  morseDahMs = morseDitMs * 3;
-    uint  morseElementSpaceMs = morseDitMs;
-    uint  morseWordSpaceMs = morseDitMs * 7;
-    */
     updateConfigBool("debug", debug);
+
+    updateConfigFloat("audioShieldVolume", audioShieldVolume);
+    updateConfigFloat("minInputRange", minInputRange);
+    updateConfigFloat("minInputSensitivity", minInputSensitivity);
+    updateConfigFloat("minInputSensitivityEMAAlpha", minInputSensitivityEMAAlpha);
+    updateConfigFloat("numbEMAAlpha", numbEMAAlpha);
+    updateConfigFloat("numbPercent", numbPercent);
+
     updateConfigUint("fftIgnoredBins", fftIgnoredBins);
-
-    // todo: should this be a long?
     updateConfigUint("maxOffMs", maxOffMs);
+    updateConfigUint("audioShieldMicGain", audioShieldMicGain);
+    updateConfigUint("minOnMs", minOnMs);
+    updateConfigUint("morseDahMs", morseDahMs);
+    updateConfigUint("morseDitMs", morseDitMs);
+    updateConfigUint("morseElementSpaceMs", morseElementSpaceMs);
+    updateConfigUint("morseWordSpaceMs", morseWordSpaceMs);
 
-    // todo: fix the type
-    updateConfigUint("numOutputs", numOutputs);
+    updateConfigUlong("randomizeOutputMs", randomizeOutputMs);
   } else {
     Serial.println("Unable to read SD card! Using defaults for everything");
   }
 
+  if (morseArrayLength) {
+    morseCommandCompleted = false;
+  } else {
+    morseCommandCompleted = true;
+  }
+
+  // setup outputs
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
+    pinMode(outputPins[i], OUTPUT);
+  }
   updateNumOutputs(numOutputs);
 
   // setup audio shield
@@ -654,11 +699,6 @@ void setup() {
   audioShield.eqSelect(GRAPHIC_EQUALIZER);
   audioShield.eqBands(-0.80, -0.10, 0, 0.10, 0.33);  // todo: tune this
 
-  // setup outputs
-  for (int i = 0; i < MAX_OUTPUTS; i++) {
-    pinMode(outputPins[i], OUTPUT);
-  }
-
   audioShield.unmuteHeadphone();  // for debugging
 
   Serial.print("Setup complete after ");
@@ -669,7 +709,7 @@ void setup() {
 
 void updateOutputStatesFromFFT() {
   // parse FFT data
-  // The 1024 point FFT always updates at approximately 86 times per second.
+  // The 1024 point FFT always updates at approximately 86 times per second (every 11-12ms).
   if (myFFT.available()) {
     uint numOutputBins, nextOutputStartBin;
     uint outputStartBin = fftIgnoredBins;  // ignore the first fftIgnoredBins bins as they can be far too noisy
@@ -764,6 +804,8 @@ void updateOutputStatesFromFFT() {
 
     Serial.print(AudioMemoryUsageMax());
     Serial.print(" blocks | ");
+
+    // todo: this doesn't interact right with the way we do morseCode
     Serial.print(elapsedMsForLastOutput - lastUpdate);
     Serial.println("ms");
     lastUpdate = elapsedMsForLastOutput;
@@ -805,8 +847,6 @@ bool blinkMorseCode() {
   return not morseCommandFound;
 }
 
-bool morseCommandCompleted = not (bool)morseArrayLength;
-
 void loop() {
   // todo: these functions should pass values instead of modifying globals
   updateOutputStatesFromFFT();
@@ -835,6 +875,7 @@ void loop() {
     } else {
       // no lights have been turned on for at least maxOffMs
       // blink more code
+      // todo: i think something is wrong about this
       morseCommandCompleted = blinkMorseCode();
 
       // todo: play the message twice?
