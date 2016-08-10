@@ -29,17 +29,19 @@ float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to 
 
 uint  minOnMs = 118;  // the shortest amount of time to leave an output on
 
+uint  numOutputs = 6;   // this will be updated by a file on the SD card
+
 float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
-float numbPercent = 0.75;  // how much of the average level to subtract from the input
+float numbPercent = 0.25;  // how much of the average level to subtract from the input. TODO! TUNE THIS
 
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
-uint   audioShieldMicGain = 63;  // decibels
+uint  audioShieldMicGain = 63;  // decibels
 
 // how long to blink for morse code
-uint   morseDitMs = 250;
-uint   morseDahMs = morseDitMs * 3;
-uint   morseElementSpaceMs = morseDitMs;
-uint   morseWordSpaceMs = morseDitMs * 7;
+uint  morseDitMs = 250;
+uint  morseDahMs = morseDitMs * 3;
+uint  morseElementSpaceMs = morseDitMs;
+uint  morseWordSpaceMs = morseDitMs * 7;
 
 /*
  * END you can easily customize these
@@ -47,20 +49,20 @@ uint   morseWordSpaceMs = morseDitMs * 7;
 
 #define BETWEEN(value, min, max) (value < max && value > min)
 #define FFT_HZ_PER_BIN 43
-#define INPUT_NUM_OUTPUTS_KNOB 15
 #define MAX_FFT_BINS 512
 #define MAX_MORSE_ARRAY_LENGTH 512  // todo: tune this
 #define MAX_OUTPUTS 8  // EL Sequencer only has 8 wires, but you could easily make this larger and drive other things
-#define OUTPUT_A 0
-#define OUTPUT_B 1
-#define OUTPUT_C 2
-#define OUTPUT_D 3
-#define OUTPUT_E 4
-#define OUTPUT_F 5
+#define OUTPUT_PIN_A 0
+#define OUTPUT_PIN_B 1
+#define OUTPUT_PIN_C 2
+#define OUTPUT_PIN_D 3
+#define OUTPUT_PIN_E 4
+#define OUTPUT_PIN_F 5
 // pins 6, 7, 9, 10, 18, 19, 11, 12, 13, 14, 15, 22, 23 are used by the audio shield
-#define OUTPUT_G 8
-#define OUTPUT_H 20
-const int outputPins[MAX_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+#define OUTPUT_PIN_G 8
+#define INPUT_PIN_NUM_OUTPUTS 16
+#define OUTPUT_PIN_H 20
+const int outputPins[MAX_OUTPUTS] = {OUTPUT_PIN_A, OUTPUT_PIN_B, OUTPUT_PIN_C, OUTPUT_PIN_D, OUTPUT_PIN_E, OUTPUT_PIN_F, OUTPUT_PIN_G, OUTPUT_PIN_H};
 int outputBins[MAX_OUTPUTS];
 
 #include <Audio.h>
@@ -84,6 +86,25 @@ struct TimedAction {
 };
 int morseArrayLength = 0;
 TimedAction morseArray[MAX_MORSE_ARRAY_LENGTH];
+
+
+elapsedMillis elapsedMsForLastOutput = 0;    // todo: do we care if this overflows?
+elapsedMillis elapsedMsForRandomization = 0;
+
+uint          randomizedOutputIds[MAX_OUTPUTS];
+
+float         lastLoudestLevel = minOnMs;
+
+unsigned long lastOnMs;
+unsigned long lastOnMsArray[MAX_OUTPUTS];
+bool          outputStates[MAX_OUTPUTS];
+
+float         avgInputLevel[MAX_FFT_BINS];
+
+int           lastMorseCommandId = -1;
+
+unsigned long lastUpdate = 0;
+float         inputSensitivity = minInputSensitivity;
 
 
 // todo: this morse stuff should probably be in its own class, but it works
@@ -353,6 +374,9 @@ void string2morseArray(String morseString) {
     morseArrayLength = morse_element_space(morseArray, morseArrayLength);
   }
   Serial.println();
+
+  Serial.print("morseArrayLength: ");
+  Serial.println(morseArrayLength);
 }
 
 // from http://forum.arduino.cc/index.php?topic=43424.0
@@ -387,106 +411,72 @@ void bubbleUnsort(uint *list, uint elem) {
   }
 }
 
-/*
-   END HELPER FUNCTIONS
-*/
+String filename2string(const char* filename) {
+  // read the first line of a file and return it as a String
+  File file = SD.open(filename, FILE_READ);
 
-void setup() {
-  Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
+  String str = "";
 
-  // read text off the SD card and translate it into morse code
-  String morseString = "";
-  SPI.setMOSI(7);
-  SPI.setSCK(14);
-  if (SD.begin(10)) {
-    // todo: support a directory with multiple text files?
-    File morseFile = SD.open("morse.txt", FILE_READ);
-    if (morseFile) {
-      Serial.println("Reading morse.txt...");
-      // if the file is available, read it:
-      while (morseFile.available()) {
-        // todo: this is wrong, but im just testing
-        morseString += (char)morseFile.read();
+  // if the file is available, read it:
+  if (file) {
+    Serial.print("Reading ");
+    Serial.print(filename);
+    Serial.println("...");
+
+    while (file.available()) {
+      int inChar = file.read();
+      if (inChar == '\n') {
+        break;
       }
-      morseFile.close();
+      str += (char)inChar;
     }
+    file.close();
 
-    // todo: should we just do this as we read? theres no real need to build a String
-    string2morseArray(morseString);
-
-    // TODO: load all the config files here
+    return str;
   }
 
-  Serial.print("morse array length: ");
-  Serial.println(morseArrayLength);
+  Serial.print("Unable to read ");
+  Serial.print(filename);
+  Serial.println("...");
+  return "";
+}
 
-  // setup audio shield
-  AudioMemory(12); // todo: tune this. so far max i've seen is 11
-  audioShield.enable();
-  audioShield.muteHeadphone(); // to avoid any clicks
-  audioShield.inputSelect(AUDIO_INPUT_MIC);
-  audioShield.volume(audioShieldVolume);  // for debugging
-  audioShield.micGain(audioShieldMicGain);  // 0-63
+void updateConfigBool(const char* filename, bool& bool_ref) {
+  // this could by DRYer
 
-  audioShield.audioPreProcessorEnable();  // todo: pre or post?
-
-  // bass, mid_bass, midrange, mid_treble, treble
-  audioShield.eqSelect(GRAPHIC_EQUALIZER);
-  audioShield.eqBands(-0.80, -0.10, 0, 0.10, 0.33);  // todo: tune this
-
-  // setup outputs
-  for (int i = 0; i < MAX_OUTPUTS; i++) {
-    pinMode(outputPins[i], OUTPUT);
+  String override = filename2string(filename);
+  if (override == "") {
+    Serial.print("Default for ");
+  } else {
+    Serial.print("Override for ");
+    bool_ref = override == "true";
   }
 
-  // setup numOutputs knob
-  pinMode(INPUT_NUM_OUTPUTS_KNOB, INPUT);
+  Serial.print(filename);
+  Serial.print(" (bool): ");
+  Serial.println(bool_ref);
+  Serial.println();
+}
 
-  audioShield.unmuteHeadphone();  // for debugging
+void updateConfigUint(const char* filename, uint& uint_ref) {
+  // this could by DRYer
 
-  // todo: is it worth doing this better?
-  randomSeed(analogRead(0) xor analogRead(INPUT_NUM_OUTPUTS_KNOB));
+  String override = filename2string(filename);
+  if (override == "") {
+    Serial.print("Default for ");
+  } else {
+    Serial.print("Override for ");
+    // toInt actually returns a long...
+    uint_ref = (uint)override.toInt();
+  }
 
-  Serial.println("Waiting for EL Sequencer...");
-  delay(100);
-
-  Serial.println("Starting...");
+  Serial.print(filename);
+  Serial.print(" (uint): ");
+  Serial.println(uint_ref);
 }
 
 
-elapsedMillis elapsedMsForLastOutput = 0;    // todo: do we care if this overflows?
-elapsedMillis elapsedMsForRandomization = 0;
-
-uint          numOutputs = 1;   // this will be updated by a knob
-uint          randomizedOutputIds[MAX_OUTPUTS];
-
-float         lastLoudestLevel = minOnMs;
-
-unsigned long lastOnMs;
-unsigned long lastOnMsArray[MAX_OUTPUTS];
-bool          outputStates[MAX_OUTPUTS];
-
-float         avgInputLevel[MAX_FFT_BINS];
-
-int           lastMorseCommandId = -1;
-
-unsigned long lastUpdate = 0;
-float         inputSensitivity = minInputSensitivity;
-
-
-void updateNumOutputs() {
-  // configure number of outputs
-  uint oldNumOutputs = numOutputs;
-  numOutputs = (uint)analogRead(INPUT_NUM_OUTPUTS_KNOB) / (1024 / MAX_OUTPUTS) + 1;
-
-  if (oldNumOutputs == numOutputs) {
-    return;
-  }
-  // we changed numOutputs
-
-  Serial.print("New numOutputs: ");
-  Serial.println(numOutputs);
-
+void updateNumOutputs(uint& numOutputs) {
   for (int i=0; i<MAX_OUTPUTS; i++) {
     // turn all the wires off
     digitalWrite(outputPins[i], LOW);
@@ -564,6 +554,7 @@ void updateNumOutputs() {
   delay(morseElementSpaceMs);
 
   // turn the lights on in order
+  // todo: do this after flashing the number
   // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
   for (uint i = 0; i < numOutputs; i++) {
     digitalWrite(outputPins[randomizedOutputIds[i]], HIGH);
@@ -594,6 +585,93 @@ void updateNumOutputs() {
 }
 
 
+/*
+   END HELPER FUNCTIONS
+*/
+
+
+void setup() {
+  Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
+
+  delay(500);  // todo: do we need this?
+
+  Serial.println("Starting...");
+
+  // todo: is it worth doing this better?
+  randomSeed(analogRead(0) xor analogRead(INPUT_PIN_NUM_OUTPUTS));
+
+  // read text off the SD card and translate it into morse code
+  String morseString = "";
+  SPI.setMOSI(7);
+  SPI.setSCK(14);
+  if (SD.begin(10)) {
+    // todo: support a directory with multiple text files?
+    // todo: should we just do this as we read? theres no real need to build a String
+    string2morseArray(filename2string("morse.txt"));
+
+    // TODO: load all the config files here
+    /*
+    bool  debug = true;    // todo: write a debug_print that uses this to print to serial
+    unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
+    uint  fftIgnoredBins = 1;  // skip the first fftIgnoredBins * FFT_HZ_PER_BIN Hz
+    uint  maxOffMs = 7000;  // how long to be off before blinking morse cod
+    float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
+    float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
+    float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
+    uint  minOnMs = 118;  // the shortest amount of time to leave an output on
+    float numbEMAAlpha = 0.02;  // alpha for calculating background sound to ignore
+    float numbPercent = 0.25;  // how much of the average level to subtract from the input. TODO! TUNE THIS
+    float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
+    uint  audioShieldMicGain = 63;  // decibels
+    uint  morseDitMs = 250;
+    uint  morseDahMs = morseDitMs * 3;
+    uint  morseElementSpaceMs = morseDitMs;
+    uint  morseWordSpaceMs = morseDitMs * 7;
+    */
+    updateConfigBool("debug", debug);
+    updateConfigUint("fftIgnoredBins", fftIgnoredBins);
+
+    // todo: should this be a long?
+    updateConfigUint("maxOffMs", maxOffMs);
+
+    // todo: fix the type
+    updateConfigUint("numOutputs", numOutputs);
+  } else {
+    Serial.println("Unable to read SD card! Using defaults for everything");
+  }
+
+  updateNumOutputs(numOutputs);
+
+  // setup audio shield
+  AudioMemory(12); // todo: tune this. so far max i've seen is 11
+  audioShield.enable();
+  audioShield.muteHeadphone(); // to avoid any clicks
+  audioShield.inputSelect(AUDIO_INPUT_MIC);
+  audioShield.volume(audioShieldVolume);  // for debugging
+  audioShield.micGain(audioShieldMicGain);  // 0-63
+
+  audioShield.audioPreProcessorEnable();  // todo: pre or post?
+
+  // bass, mid_bass, midrange, mid_treble, treble
+  audioShield.eqSelect(GRAPHIC_EQUALIZER);
+  audioShield.eqBands(-0.80, -0.10, 0, 0.10, 0.33);  // todo: tune this
+
+  // setup outputs
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
+    pinMode(outputPins[i], OUTPUT);
+  }
+
+  // setup numOutputs knob
+  pinMode(INPUT_PIN_NUM_OUTPUTS, INPUT);
+
+  audioShield.unmuteHeadphone();  // for debugging
+
+  Serial.print("Setup complete after ");
+  Serial.print(elapsedMsForLastOutput);
+  Serial.println("ms");
+}
+
+
 void updateOutputStatesFromFFT() {
   // parse FFT data
   // The 1024 point FFT always updates at approximately 86 times per second.
@@ -603,7 +681,7 @@ void updateOutputStatesFromFFT() {
 
     // set the overall sensitivity based on how loud the previous inputs were
     // todo: i think this should be an exponential moving average
-    // todo: we might want to do this for the current data instead of using last data
+    // TODO! Do this for the current data instead of using last data
     inputSensitivity += minInputSensitivityEMAAlpha * (max(lastLoudestLevel * minInputRange, minInputSensitivity) - inputSensitivity);
     if (inputSensitivity < minInputSensitivity) {
       inputSensitivity = minInputSensitivity;
@@ -736,8 +814,6 @@ bool morseCommandCompleted = not (bool)morseArrayLength;
 
 void loop() {
   // todo: these functions should pass values instead of modifying globals
-  updateNumOutputs();
-
   updateOutputStatesFromFFT();
 
   // todo: check our buttons to see if we should update minInputSensitivity
