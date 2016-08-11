@@ -24,7 +24,7 @@ uint  maxOffMs = 7000;  // how long to be off before blinking morse cod
 
 float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
-float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
+float minInputSensitivity = 0.070;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
 float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
 
 uint  minOnMs = 118;  // the shortest amount of time to leave an output on
@@ -32,7 +32,7 @@ uint  minOnMs = 118;  // the shortest amount of time to leave an output on
 uint  numOutputs = 6;   // this will be updated by a file on the SD card
 
 float numbEMAAlpha = 0.005;  // alpha for calculating background sound to ignore. do how should we do this?
-float numbPercent = 0.50;  // how much of the average level to subtract from the input. TODO! TUNE THIS
+float numbPercent = 0.75;  // how much of the average level to subtract from the input. TODO! TUNE THIS
 
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 uint  audioShieldMicGain = 63;  // decibels
