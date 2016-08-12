@@ -13,54 +13,101 @@ Tools
 -----
 
 - Soldering Iron
-- Heat Shrink Gun
 
-- FTDI Cable 5V - $17.95 - https://www.sparkfun.com/products/9718 - This can be replaced by a FTDI Breakout Board 5V
+- FTDI Cable 5V - $17.95 - https://www.sparkfun.com/products/9718
+
+- USB micro cable with the red wire cut
+
+- Small philips screw driver
 
 
 Parts
 -----
 
 - Solder and Flux
-- Heat Shrink Tubing
-- Wire for extensions to the EL Wire or Battery Pack
 
-- FTDI Breakout Board 5V - $14.95 - https://www.sparkfun.com/products/9716 - (Only if not using FTDI Cable)
+- [Multicolored jumper cables - $10.00](https://amzn.com/B00M5WLZDW)
+  - Any wire works, but these are easy to split apart and were nice while experimenting with the breadboard.
+  - Once I was done experimenting with the breadboard and ready to solder, I cut the ends off, stripped the ends a bit, and melted some solder into the bare wire.
 
-- Sparkfun EL Sequencer - $34.95 - https://www.sparkfun.com/products/12781 - You will have to do minimal soldering to the board for it to work with the 12v Inverter
+- [12v Portable Battery Pack - $23.99](http://smile.amazon.com/dp/B00MHNQIR2)
+  - Fully charged, this has lasted over 8 hours for me.
 
-- EL Inverter 12v - $14.95 - https://www.sparkfun.com/products/10469 - Powers 10-15m of EL Wire
+- [Teensy 3.2 Audio Tutorial Kit - $60.00](https://www.pjrc.com/store/audio_tutorial_kit.html)
+  - You can save some money by buying the Teensy, the Audio Adaptor, some extra parts, and soldering it all together, but the kit is a lot easier and then you can do all their awesome tutorials.
 
-- Jumper Wire - JST Black Red - $0.95 - https://www.sparkfun.com/products/8670 - This will replace the barrel plug cable on the Inverter so that it can be powered by the board. You can also buy a big pack of these for cheap
+- [Break Away Headers Straight - $1.50](https://www.sparkfun.com/products/116)
+  - 6 for the FTDI headers
+  - 8 for the Teensy
 
-- 12v Portable Battery Pack $30-50
- - I chose https://www.amazon.com/gp/product/B00ME3ZH7C/ref=oh_aui_detailpage_o01_s00?ie=UTF8&psc=1 since its always nice having a spare USB port and it isn't too giant. This is larger than a simple Li-ion pack, but is easy to charge and has status lights.
+- [Sparkfun EL Sequencer - $34.95](https://www.sparkfun.com/products/12781)
+  - You will have to solder some header pins and close a jumper.
 
-- Barrel Jack to 2-pin JST - $2.95 - https://www.sparkfun.com/products/8734 - This makes it easy to connect the Battery Pack to the Sequencer Board. You could also solder a JST connected onto your Battery Pack's cable, but I wanted the option to plug that into other things easily.
+- [EL Inverter 12v - $14.95](https://www.sparkfun.com/products/10469)
+  - The site says it powers 10-15m of EL Wire, but I've run 6 3m strands and its pretty bright.
 
-- Up to ~15m of EL Wire - https://www.sparkfun.com/products/10200
- - If you want to use "chasing" wire, you need https://www.sparkfun.com/products/12934 ($1.50). Chasing wire takes up 3 slots.
+- [Jumper Wire - JST Black Red - $0.95](https://www.sparkfun.com/products/8670)
+  - This will replace the barrel plug cable on the Inverter so that it can be powered by the board.
 
-With the above parts you can power up to 8 strands of EL Wire (chasing counts as 3) by writing small programs for the sequencer board and using the FTDI Cable/Breakout.
+- [Barrel Jack to 2-pin JST - $2.95](https://www.sparkfun.com/products/8734)
 
+- Up to 6 strands of [EL Wire - $9.95 each](https://www.sparkfun.com/products/10200)
+  - A later version of this visualizer will support up to 8 strands and "chasing" wire.
 
-Simple Sound Reactive
----------------------
+- Clear thread or fishing line.
 
-- Sparkfun Sound Detector - $10.95 - https://www.sparkfun.com/products/12642 - This simple board will send a signal whenever there is sound.
-
-
-Advanced Sound Reactive
------------------------
-
-- Teensy 3.2 - $19.95 - https://www.pjrc.com/store/teensy32.html - This awesome board can be easily hooked up to a bunch of sensors. Than you wire this board up to the inputs of the Sequencer board and done. This logic could maybe bo done by the sequencer board itself, but the FFT library for the Teensy makes this really easy (code coming soon).
-
-- Teensy Audio Board - $14.95 - https://www.sparkfun.com/products/12767 - This makes it easy to hook a mic and do the math for an equalizer. I also plan on using the audio out to do something trippy like https://itunes.apple.com/us/app/the-app-formerly-known-as-h-r/id1087530357?mt=8
-
-- Microphone and thumb wheel for Audio Board
+- A loose fitting jacket that is easy to dance in and will keep you warm outside at night.
 
 
-Todo
-----
+Software
+--------
 
-Instructions for putting it all together
+- Teensy
+
+- Arduino 2 IDE
+
+
+Putting it Together
+-------------------
+
+#. Label the FTDI cable near the USB end "FTDI".
+#. Label the micro USB cable near the USB end "NO POWER/TEENSY".
+#. Label the existing JST connector on the inverter "100V AC".
+#. Label the new JST connector for the inverter "12V DC".
+#. Wet solder sponge and plug in soldering iron.
+#. Remove the quality control sticker from the inverter.
+#. Unscrew the inverter and open it up.
+#. Replace the barrel plug on the inverter with the JST connector.
+#. Place a dot of solder on SJ1 so the 12V battery directly powers the inverter.
+#. Solder the 6 FTDI header pins in place.
+#. Solder the power, ground, and 6 analog header pins in place.
+#. Unplug the soldering iron.
+#. Insulate the capacitors inside the inverter somehow. Hot glue? Epoxy? Rubber insulation?
+#. Glue down the new JST connector on the inverter.
+#. Screw the inverter back together.
+#. Solder the header pins and the Teensy together.
+  - Sequencer power -> Teensy power
+  - Sequencer ground -> Teensy ground
+  - Sequencer A2 -> Teensy 0
+  - Sequencer A3 -> Teensy 1
+  - Sequencer A4 -> Teensy 2
+  - Sequencer A5 -> Teensy 3
+  - Sequencer A6 -> Teensy 4
+  - Sequencer A7 -> Teensy 5
+#. Label the Barrel Jack to 2-pin JST connector "12v BATT".
+#. Plug the Barrel Jack to 2-pin JST connector into the Sequencer board.
+#. Plug the inverter into the sequencer board.
+#. Flip the power switch to "BATT".
+#. Plug the battery into the Barrel Jack.
+#. Plug the FTDI cable into the sequencer board.
+#. Plug the micro USB into the Teensy.
+#. Plug the USB from the sequencer into your computer.
+#. Plug your EL wire into the sequencer
+#. Turn the battery on.
+#. Upload "el_sequencer.ino".
+#. Open the serial console.
+#. Unplug the FTDI cable from your computer.
+#. Plug the USB **WITH THE RED WIRE CUT** from the Teensy into your computer.
+#. Upload "teensy.ino"
+#. Open the serial console.
+#. Play some music.
