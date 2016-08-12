@@ -24,7 +24,7 @@ unsigned long maxOffMs = 7000;  // how long to be off before blinking morse cod
 
 float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
-float minInputSensitivity = 0.070;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
+float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
 float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
 
 uint  minOnMs = 118;  // the shortest amount of time to leave an output on
@@ -93,7 +93,7 @@ bool          outputStates[MAX_OUTPUTS];
 
 float         avgInputLevel[MAX_FFT_BINS];
 
-uint          lastPatternCommandId = 9;  // start this at non-zero
+uint          lastPatternActionId = 9;  // start this at non-zero
 
 unsigned long lastUpdate = 0;
 float         inputSensitivity = minInputSensitivity;
@@ -559,7 +559,7 @@ void updateNumOutputs(uint& numOutputs) {
   Serial.print("numOutputs: ");
   Serial.println(numOutputs);
 
-  for (int i=0; i<MAX_OUTPUTS; i++) {
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
     // turn all the wires off
     digitalWrite(outputPins[i], LOW);
 
@@ -665,6 +665,7 @@ void updateNumOutputs(uint& numOutputs) {
     for (uint i = 0; i < numOutputs; i++) {
       digitalWrite(outputPins[i], LOW);
     }
+    delay(morseElementSpaceMs);
   }
 }
 
@@ -797,38 +798,38 @@ void updateOutputStatesFromFFT() {
 }
 
 
-bool blinkPattern(TimedAction patternArray[], uint patternArrayLength, unsigned long checkMs) {
+bool blinkPattern(TimedAction patternArray[], uint& lastPatternActionId, uint patternArrayLength, unsigned long checkMs) {
   // blink all of the wires according to patternArray
-  bool patternCommandFound = false;
+  bool patternActionFound = false;
 
-  for (uint patternCommandId = 0; patternCommandId < patternArrayLength; patternCommandId++) {
-    TimedAction patternCommand = patternArray[patternCommandId];
-    checkMs += patternCommand.checkMs;
+  for (uint patternActionId = 0; patternActionId < patternArrayLength; patternActionId++) {
+    TimedAction patternAction = patternArray[patternActionId];
+    checkMs += patternAction.checkMs;
     if (elapsedMsForLastOutput < checkMs) {
-      if (lastPatternCommandId != patternCommandId) {
+      if (lastPatternActionId != patternActionId) {
         // this is the first time we've seen this command this iteration
 
         // save that we've done this command already
-        lastPatternCommandId = patternCommandId;
+        lastPatternActionId = patternActionId;
 
         // randomize the outputs if this is the first command
-        if ((patternCommandId = 0) && (randomizeOutputMs)) {
+        if ((patternActionId = 0) && (randomizeOutputMs)) {
           bubbleUnsort(randomizedOutputIds, numOutputs);
         }
 
         // todo: only do half (rounded up) of the lights?
         for (uint outputId = 0; outputId < numOutputs; outputId++) {
-          digitalWrite(outputId, patternCommand.outputActions[outputId]);
+          digitalWrite(outputId, patternAction.outputActions[outputId]);
         }
       }
 
-      patternCommandFound = true;
+      patternActionFound = true;
       break;
     }
   }
 
   // return true when we are done playing the pattern
-  return not patternCommandFound;
+  return not patternActionFound;
 }
 
 
@@ -938,6 +939,6 @@ void loop() {
     }
 
     // blink pretty
-    patternCompleted = blinkPattern(patternArray, patternArrayLength, maxOffMs);
+    patternCompleted = blinkPattern(patternArray, lastPatternActionId, patternArrayLength, maxOffMs);
   }
 }
