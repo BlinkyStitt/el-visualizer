@@ -74,6 +74,7 @@ Putting it Together
 #. Label the micro USB cable near the USB end "NO POWER/TEENSY".
 #. Label the existing JST connector on the inverter "100V AC".
 #. Label the new JST connector for the inverter "12V DC".
+#. Label the Barrel Jack to 2-pin JST connector "12v BATT".
 #. Wet solder sponge and plug in soldering iron.
 #. Remove the quality control sticker from the inverter.
 #. Unscrew the inverter and open it up.
@@ -81,11 +82,8 @@ Putting it Together
 #. Place a dot of solder on SJ1 so the 12V battery directly powers the inverter.
 #. Solder the 6 FTDI header pins in place.
 #. Solder the power, ground, and 6 analog header pins in place.
-#. Unplug the soldering iron.
-#. Insulate the capacitors inside the inverter somehow. Hot glue? Epoxy? Rubber insulation?
-#. Glue down the new JST connector on the inverter.
-#. Screw the inverter back together.
-#. Solder the header pins and the Teensy together.
+#. Use the wire strippers, the soldering iron, flux, and solder to prepare the 8 wires that will connect the Teensy to the EL sequencer as well as the header pins.
+#. Solder the header pins and the Teensy together with the wire.
   - Sequencer power -> Teensy power
   - Sequencer ground -> Teensy ground
   - Sequencer A2 -> Teensy 0
@@ -94,7 +92,10 @@ Putting it Together
   - Sequencer A5 -> Teensy 3
   - Sequencer A6 -> Teensy 4
   - Sequencer A7 -> Teensy 5
-#. Label the Barrel Jack to 2-pin JST connector "12v BATT".
+#. Unplug the soldering iron.
+#. Insulate the capacitors inside the inverter somehow. Hot glue? Epoxy? Rubber insulation?
+#. Glue down the new JST connector on the inverter.
+#. Screw the inverter back together.
 #. Plug the Barrel Jack to 2-pin JST connector into the Sequencer board.
 #. Plug the inverter into the sequencer board.
 #. Flip the power switch to "BATT".
