@@ -30,6 +30,10 @@ const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, I
 const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F}; //, OUTPUT_G, OUTPUT_H};
 
 void setup() {
+  Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
+  delay(250);
+  Serial.println("Starting...");
+
   for (int i = 0; i < MAX_WIRES; i++) {
     pinMode(inputPins[i], INPUT);
     pinMode(outputPins[i], OUTPUT);
@@ -42,8 +46,11 @@ void loop() {
     int inputValue = analogRead(inputPins[i]);
     if (inputValue > 500) {
       digitalWrite(outputPins[i], HIGH);
+      Serial.print(" 1 |");
     } else {
       digitalWrite(outputPins[i], LOW);
+      Serial.print("   |");
     }
   }
+  Serial.println();
 }
