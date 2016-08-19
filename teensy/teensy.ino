@@ -14,28 +14,31 @@
  * todo: what units are the read values from the FFT in?
  *
  */
-bool  debug = true;    // todo: write a debug_print that uses this to print to serial
-
-unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
+bool  debug = true;    // todo: use this to disable the Serial prints?
+bool  sensitivityButtonEnabled = true;
 
 uint  fftIgnoredBins = 1;  // skip the first fftIgnoredBins * FFT_HZ_PER_BIN Hz
 
-unsigned long maxOffMs = 7000;  // how long to be off before blinking morse cod
+uint  maxOnOutputs = 0;  // how many outputs to turn on at most. 0 is no limit
 
-float minInputRange = 0.80;  // activate outputs on sounds that are at least this % as loud as the loudest sound
+float minInputRange = 0.85;  // activate outputs on sounds that are at least this % as loud as the loudest sound
 
-float minInputSensitivity = 0.060;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
-float minInputSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
+float minInputSensitivity = 0.080;  // the quietest sound that will blink the lights. 1.0 represents a full scale sine wave
+float defaultMinInputSensitivity;
+float automaticSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to adjust sensitivity based on the loudest sound
 
-uint  minOnMs = 118;  // the shortest amount of time to leave an output on
+uint  minOnMs = 150; // 118? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection?
 
-uint  numOutputs = 6;   // this will be updated by a file on the SD card
+uint  numOutputs = 4;   // this will be updated by a file on the SD card
 
 float numbEMAAlpha = 0.005;  // alpha for calculating background sound to ignore. do how should we do this?
 float numbPercent = 0.75;  // how much of the average level to subtract from the input. TODO! TUNE THIS
 
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 uint  audioShieldMicGain = 63;  // decibels
+
+unsigned long randomizeOutputMs = 0;  // 1000 * 60 * 5;  // if 0, don't randomize the outputs
+unsigned long maxOffMs = 7000;  // how long to be off before blinking morse cod
 
 // how long to blink for morse code
 uint  morseDitMs = 250;
@@ -58,14 +61,16 @@ uint  morseWordSpaceMs = morseDitMs * 7;
 #define OUTPUT_PIN_D 3
 #define OUTPUT_PIN_E 4
 #define OUTPUT_PIN_F 5
-// pins 6, 7, 9, 10, 18, 19, 11, 12, 13, 14, 15, 22, 23 are used by the audio shield
+// pins 6, 7, 9-15, 18, 19, 22, 23 are used by the audio shield
 #define OUTPUT_PIN_G 8
-#define INPUT_PIN_VOLUME 15
+#define INPUT_PIN_AUDIO_SHIELD_VOLUME_KNOB 15  // this is on the audio shield
+#define INPUT_PIN_SENSITIVITY_BUTTON 16  // todo: would be cool to use touchRead
 #define OUTPUT_PIN_H 20
 const int outputPins[MAX_OUTPUTS] = {OUTPUT_PIN_A, OUTPUT_PIN_B, OUTPUT_PIN_C, OUTPUT_PIN_D, OUTPUT_PIN_E, OUTPUT_PIN_F, OUTPUT_PIN_G, OUTPUT_PIN_H};
 int outputBins[MAX_OUTPUTS];
 
 #include <Audio.h>
+#include <Bounce2.h> 
 #include <elapsedMillis.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -78,11 +83,12 @@ AudioAnalyzeFFT1024  myFFT;
 AudioConnection      patchCord1(audioInput, audioOutput);
 AudioConnection      patchCord2(audioInput, myFFT);
 AudioControlSGTL5000 audioShield;
-
+Bounce               sensitivityButton = Bounce();  // todo: maybe use https://github.com/mathertel/OneButton instead?
 
 elapsedMillis elapsedMsForLastOutput = 0;    // todo: do we care if this overflows?
 elapsedMillis elapsedMsForRandomization = 0;
 
+uint          sensitivityButtonBounceMs = 15;  // tune this based on your button
 uint          randomizedOutputIds[MAX_OUTPUTS];
 
 float         lastLoudestLevel = minOnMs;
@@ -437,15 +443,8 @@ int rand_range(int n) {
 void bubbleUnsort(uint *list, uint elem) {
   Serial.println("!!! Randomizing Outputs !!!");
   for (int a = elem - 1; a > 0; a--) {
-    // todo: not sure what is better. apparently the built in random has some sort of bias?
-    //int r = random(a+1);
     int r = rand_range(a + 1);
     if (r != a) {
-      /*
-      int temp = list[a];
-      list[a] = list[r];
-      list[r] = temp;
-      */
       // https://betterexplained.com/articles/swap-two-variables-using-xor/
       list[a] = list[a] xor list[r];
       list[r] = list[a] xor list[r];
@@ -591,9 +590,9 @@ void updateNumOutputs(uint& numOutputs) {
       outputBins[2] = 82;  // todo: tune this
       break;
     case 4:
-      outputBins[0] = 3;   // todo: tune this
-      outputBins[1] = 6;   // todo: tune this
-      outputBins[2] = 10;  // todo: tune this
+      outputBins[0] = 6;   // todo: tune this
+      outputBins[1] = 20;   // todo: tune this
+      outputBins[2] = 41;  // todo: tune this
       outputBins[3] = 186;  // todo: tune this
       break;
     case 5:
@@ -677,6 +676,8 @@ void updateOutputStatesFromFFT() {
 
     psueodocode for improved(?) process
 
+    todo: at the very least, use maxOnOutputs
+
     for wire_bins in wires_bins:
         for bin_level in wire_bins:
             subtract some % of a long average from the bin_level to go numb to constant noise
@@ -685,13 +686,14 @@ void updateOutputStatesFromFFT() {
 
     set outputSensitivity based on some EMA of the loudest wire * SOME_PERCENT
 
-    for loudest_bin_level in loudest_wire_bins:
+    for output_id, loudest_bin_level in loudest_wire_bins sorted descending:
         if loudest_bin_level < outputSensitivity:
             turn the wire off
+            break because everything after this is even quieter
         elif loudest_bin_level * SOME_PERCENT > previous_loudest_bin_level:
-            turn wire on
+            check maxOnOutputs. if over, turn off, else turn wire on
         elif loudest_bin_level > previous_loudest_bin_level * SOME_PERCENT:
-            keep state
+            check maxOnOutputs. if over, turn off, else keep state
         else:
             turn the wire off
     */
@@ -702,7 +704,7 @@ void updateOutputStatesFromFFT() {
     // set the overall sensitivity based on how loud the previous inputs were
     // todo: i think this should be an exponential moving average
     // TODO! Do this for the current data instead of using last data
-    inputSensitivity += minInputSensitivityEMAAlpha * (max(lastLoudestLevel * minInputRange, minInputSensitivity) - inputSensitivity);
+    inputSensitivity += automaticSensitivityEMAAlpha * (max(lastLoudestLevel * minInputRange, minInputSensitivity) - inputSensitivity);
     if (inputSensitivity < minInputSensitivity) {
       inputSensitivity = minInputSensitivity;
     } else if (inputSensitivity > 1) {
@@ -761,7 +763,7 @@ void updateOutputStatesFromFFT() {
 
         // save the time we turned on unless we are in the front X% of the minOnMs window of a previous on
         if (elapsedMsForLastOutput - lastOnMsArray[outputId] > minOnMs * 0.80) {   // todo: tune this
-          // todo: instead of setting to the true time, set to some average of the old time and the new?
+          // todo: limit the number of lights we turn on to the loudest numOutputs - 1 or 2?
           lastOnMsArray[outputId] = lastOnMs;
           Serial.print("*");
         } else {
@@ -794,6 +796,22 @@ void updateOutputStatesFromFFT() {
     Serial.print(elapsedMsForLastOutput - lastUpdate);
     Serial.println("ms");
     lastUpdate = elapsedMsForLastOutput;
+
+    // handle the sensitivityButton
+    if (sensitivityButtonEnabled) {
+      bool sensitivityButtonUpdated = sensitivityButton.update();
+      if (sensitivityButton.read() == LOW) {
+        // if the button is pressed, update minInputSensitivity
+        if (sensitivityButtonUpdated) {
+          minInputSensitivity = defaultMinInputSensitivity;
+        }
+
+        minInputSensitivity = max(minInputSensitivity, lastLoudestLevel);
+
+        Serial.print("sensitivityButton pressed. minInputSensitivity: ");
+        Serial.println(minInputSensitivity, 3);
+      }
+    }
   }
 }
 
@@ -832,7 +850,6 @@ bool blinkPattern(TimedAction patternArray[], uint& lastPatternActionId, uint pa
   return not patternActionFound;
 }
 
-
 /*
    END HELPER FUNCTIONS
 */
@@ -840,54 +857,68 @@ bool blinkPattern(TimedAction patternArray[], uint& lastPatternActionId, uint pa
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
-  delay(500);
+  delay(750);
   Serial.println("Starting...");
 
+  for (int i = 0; i < MAX_OUTPUTS; i++) {
+    pinMode(outputPins[i], OUTPUT);
+  }
+  pinMode(INPUT_PIN_SENSITIVITY_BUTTON, INPUT_PULLUP);
+  pinMode(INPUT_PIN_AUDIO_SHIELD_VOLUME_KNOB, INPUT);
+
   // todo: is it worth doing this better?
-  randomSeed(analogRead(0) * analogRead(INPUT_PIN_VOLUME));
+  randomSeed(analogRead(INPUT_PIN_AUDIO_SHIELD_VOLUME_KNOB));
 
   // read config off the SD card
   SPI.setMOSI(7);
   SPI.setSCK(14);
   if (SD.begin(10)) {
     // todo: support a directory with multiple text files for morse code and patterns? maybe do morse line-by-line
+    // todo: SD only supports 8.3 filenames. most of these are too long
+    // todo: maybe we should load a file for each config type and parse each line
     filename2morse("morse", patternArray, patternArrayLength);
     filename2pattern("pattern", patternArray, patternArrayLength);
 
+    //                ________
     updateConfigBool("debug", debug);
+    updateConfigBool("snsBtnEn", sensitivityButtonEnabled);
 
-    updateConfigFloat("audioShieldVolume", audioShieldVolume);
-    updateConfigFloat("minInputRange", minInputRange);
-    updateConfigFloat("minInputSensitivity", minInputSensitivity);
-    updateConfigFloat("minInputSensitivityEMAAlpha", minInputSensitivityEMAAlpha);
-    updateConfigFloat("numbEMAAlpha", numbEMAAlpha);
-    updateConfigFloat("numbPercent", numbPercent);
 
-    updateConfigUint("fftIgnoredBins", fftIgnoredBins);
-    updateConfigUint("audioShieldMicGain", audioShieldMicGain);
+    //                 ________
+    updateConfigFloat("volume", audioShieldVolume);
+    updateConfigFloat("autoEMA", automaticSensitivityEMAAlpha);
+    updateConfigFloat("minRange", minInputRange);
+    updateConfigFloat("minSense", minInputSensitivity);
+    updateConfigFloat("numbEMA", numbEMAAlpha);
+    updateConfigFloat("numbPct", numbPercent);
+
+    // 8 char max     ________
+    updateConfigUint("micGain", audioShieldMicGain);
+    updateConfigUint("fftIgnor", fftIgnoredBins);
+    updateConfigUint("maxOn", maxOnOutputs);
     updateConfigUint("minOnMs", minOnMs);
-    updateConfigUint("morseDahMs", morseDahMs);
-    updateConfigUint("morseDitMs", morseDitMs);
-    updateConfigUint("morseElementSpaceMs", morseElementSpaceMs);
-    updateConfigUint("morseWordSpaceMs", morseWordSpaceMs);
+    updateConfigUint("morseDah", morseDahMs);
+    updateConfigUint("morseDit", morseDitMs);
+    updateConfigUint("morseElm", morseElementSpaceMs);
+    updateConfigUint("morseSpc", morseWordSpaceMs);
+    updateConfigUint("numOut", numOutputs);
+    updateConfigUint("snsBtnMs", sensitivityButtonBounceMs);
 
+    // 8 char max      ________
     updateConfigUlong("maxOffMs", maxOffMs);
-    updateConfigUlong("randomizeOutputMs", randomizeOutputMs);
+    updateConfigUlong("randMs", randomizeOutputMs);
+
+    // todo: write the version of this program to the SD card?
   } else {
     Serial.println("Unable to read SD card! Using defaults for everything");
   }
 
-  if (patternArrayLength) {
-    patternCompleted = false;
-  } else {
-    patternCompleted = true;
-  }
-
-  // setup outputs
-  for (int i = 0; i < MAX_OUTPUTS; i++) {
-    pinMode(outputPins[i], OUTPUT);
-  }
+  // now we can setup anything that might use user config
   updateNumOutputs(numOutputs);
+  defaultMinInputSensitivity = minInputSensitivity;
+
+  sensitivityButton.attach(INPUT_PIN_SENSITIVITY_BUTTON);
+  sensitivityButton.interval(sensitivityButtonBounceMs);  // interval in ms. tune this based on your buttons
 
   // setup audio shield
   AudioMemory(12); // todo: tune this. so far max i've seen is 11
@@ -914,13 +945,13 @@ void loop() {
   // todo: these functions should pass values instead of modifying globals
   updateOutputStatesFromFFT();
 
-  // todo: check our buttons to see if we should update minInputSensitivity
-
+  // randomize the outputs if necessary
   if (randomizeOutputMs && (elapsedMsForRandomization > randomizeOutputMs)) {
     bubbleUnsort(randomizedOutputIds, numOutputs);
     elapsedMsForRandomization = 0;
   }
 
+  // actually turn the lights on based on the FFT or the pattern
   if (elapsedMsForLastOutput - lastOnMs < maxOffMs) {
     // we turned a light on recently. send output states to the wires
     for (uint i = 0; i < numOutputs; i++) {
