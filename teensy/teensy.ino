@@ -497,7 +497,7 @@ void updateConfigBool(const char* filename, bool& config_ref) {
     Serial.print("Default for ");
   } else {
     Serial.print("Override for ");
-    config_ref = override == "true";
+    config_ref = override == "1";
   }
 
   Serial.print(filename);

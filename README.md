@@ -112,3 +112,42 @@ Putting it Together
 #. Upload "teensy.ino"
 #. Open the serial console.
 #. Play some music.
+
+
+Configuring
+-----------
+
+To configure the visualizer, various options are read off files in the root of SD card:
+
+  MORSE.TXT
+  PATTERN.TXT (not yet implemented)
+
+  Booleans (1 is True):
+    DEBUG.TXT = debug
+    SNSBTNEN.TXT = sensitivityButtonEnabled
+
+  Floats:
+    VOLUME.TXT = audioShieldVolume
+    AUTOEMA.TXT = automaticSensitivityEMAAlpha
+    MINRANGE.TXT = minInputRange
+    MINSENSE.TXT = minInputSensitivity
+    NUMBEMA.TXT = numbEMAAlpha
+    NUMBPCT.TXT = numbPercent
+
+  Unsigned Integers:
+    MICGAIN.TXT = audioShieldMicGain
+    FFTIGNOR.TXT = fftIgnoredBins
+    MAXON.TXT = maxOnOutputs
+    MINONMS.TXT = minOnMs
+    MORSEDAH.TXT = morseDahMs
+    MORSEDIT.TXT = morseDitMs
+    MORSEELE.TXT = morseElementSpaceMs
+    MORSESPA.TXT = morseWordSpaceMs
+    NUMOUT.TXT = numOutputs
+    SNSBTNMS.TXT = sensitivityButtonBounceMs
+
+  Unsigned Longs:
+    MAXOFFMS.TXT = maxOffMs
+    RANDMS.TXT = randomizeOutputMs
+
+When running, the current version of the teensy program is written to VERSION.TXT
