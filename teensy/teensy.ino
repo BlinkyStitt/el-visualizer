@@ -29,7 +29,7 @@ float automaticSensitivityEMAAlpha = 0.95;  // alpha for calculating how fast to
 
 uint  minOnMs = 150; // 118? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection?
 
-uint  numOutputs = 4;   // this will be updated by a file on the SD card
+uint  numOutputs = 6;   // this will be updated by a file on the SD card
 
 float numbEMAAlpha = 0.005;  // alpha for calculating background sound to ignore. do how should we do this?
 float numbPercent = 0.75;  // how much of the average level to subtract from the input. TODO! TUNE THIS
@@ -49,6 +49,8 @@ uint  morseWordSpaceMs = morseDitMs * 7;
 /*
  * END you can easily customize these
  */
+
+#define VERSION "1.0.0"
 
 #define BETWEEN(value, min, max) (value < max && value > min)
 #define FFT_HZ_PER_BIN 43
@@ -70,7 +72,7 @@ const int outputPins[MAX_OUTPUTS] = {OUTPUT_PIN_A, OUTPUT_PIN_B, OUTPUT_PIN_C, O
 int outputBins[MAX_OUTPUTS];
 
 #include <Audio.h>
-#include <Bounce2.h> 
+#include <Bounce2.h>
 #include <elapsedMillis.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -102,7 +104,7 @@ float         avgInputLevel[MAX_FFT_BINS];
 uint          lastPatternActionId = 9;  // start this at non-zero
 
 unsigned long lastUpdate = 0;
-float         inputSensitivity = minInputSensitivity;
+float         inputSensitivity;
 
 bool          patternCompleted = false;
 
@@ -873,49 +875,58 @@ void setup() {
   SPI.setMOSI(7);
   SPI.setSCK(14);
   if (SD.begin(10)) {
+    // SD only supports 8.3 filenames. most of these variable names are too long
+
     // todo: support a directory with multiple text files for morse code and patterns? maybe do morse line-by-line
-    // todo: SD only supports 8.3 filenames. most of these are too long
-    // todo: maybe we should load a file for each config type and parse each line
-    filename2morse("morse", patternArray, patternArrayLength);
-    filename2pattern("pattern", patternArray, patternArrayLength);
-
-    //                ________
-    updateConfigBool("debug", debug);
-    updateConfigBool("snsBtnEn", sensitivityButtonEnabled);
-
-
-    //                 ________
-    updateConfigFloat("volume", audioShieldVolume);
-    updateConfigFloat("autoEMA", automaticSensitivityEMAAlpha);
-    updateConfigFloat("minRange", minInputRange);
-    updateConfigFloat("minSense", minInputSensitivity);
-    updateConfigFloat("numbEMA", numbEMAAlpha);
-    updateConfigFloat("numbPct", numbPercent);
+    filename2morse("MORSE.TXT", patternArray, patternArrayLength);
+    filename2pattern("PATTERN.TXT", patternArray, patternArrayLength);
 
     // 8 char max     ________
-    updateConfigUint("micGain", audioShieldMicGain);
-    updateConfigUint("fftIgnor", fftIgnoredBins);
-    updateConfigUint("maxOn", maxOnOutputs);
-    updateConfigUint("minOnMs", minOnMs);
-    updateConfigUint("morseDah", morseDahMs);
-    updateConfigUint("morseDit", morseDitMs);
-    updateConfigUint("morseElm", morseElementSpaceMs);
-    updateConfigUint("morseSpc", morseWordSpaceMs);
-    updateConfigUint("numOut", numOutputs);
-    updateConfigUint("snsBtnMs", sensitivityButtonBounceMs);
+    updateConfigBool("DEBUG.TXT", debug);
+    updateConfigBool("SNSBTNEN.TXT", sensitivityButtonEnabled);
+    // 8 char max     ________
 
     // 8 char max      ________
-    updateConfigUlong("maxOffMs", maxOffMs);
-    updateConfigUlong("randMs", randomizeOutputMs);
+    updateConfigFloat("VOLUME.TXT", audioShieldVolume);
+    updateConfigFloat("AUTOEMA.TXT", automaticSensitivityEMAAlpha);
+    updateConfigFloat("MINRANGE.TXT", minInputRange);
+    updateConfigFloat("MINSENSE.TXT", minInputSensitivity);
+    updateConfigFloat("NUMBEMA.TXT", numbEMAAlpha);
+    updateConfigFloat("NUMBPCT.TXT", numbPercent);
+    // 8 char max      ________
 
-    // todo: write the version of this program to the SD card?
+    // 8 char max     ________
+    updateConfigUint("MICGAIN.TXT", audioShieldMicGain);
+    updateConfigUint("FFTIGNOR.TXT", fftIgnoredBins);
+    updateConfigUint("MAXON.TXT", maxOnOutputs);
+    updateConfigUint("MINONMS.TXT", minOnMs);
+    updateConfigUint("MORSEDAH.TXT", morseDahMs);
+    updateConfigUint("MORSEDIT.TXT", morseDitMs);
+    updateConfigUint("MORSEELE.TXT", morseElementSpaceMs);
+    updateConfigUint("MORSESPA.TXT", morseWordSpaceMs);
+    updateConfigUint("NUMOUT.TXT", numOutputs);
+    updateConfigUint("SNSBTNMS.TXT", sensitivityButtonBounceMs);
+    // 8 char max     ________
+
+    // 8 char max      ________
+    updateConfigUlong("MAXOFFMS.TXT", maxOffMs);
+    updateConfigUlong("RANDMS.TXT", randomizeOutputMs);
+    // 8 char max      ________
+
+    // write the version of this program to the SD card?
+    File versionFile = SD.open("VERSION.TXT", O_WRITE | O_CREAT | O_TRUNC);
+    versionFile.println(VERSION);
+    versionFile.close();
   } else {
     Serial.println("Unable to read SD card! Using defaults for everything");
   }
+  Serial.print("Version: ");
+  Serial.println(VERSION);
 
   // now we can setup anything that might use user config
   updateNumOutputs(numOutputs);
   defaultMinInputSensitivity = minInputSensitivity;
+  inputSensitivity = minInputSensitivity;
 
   sensitivityButton.attach(INPUT_PIN_SENSITIVITY_BUTTON);
   sensitivityButton.interval(sensitivityButtonBounceMs);  // interval in ms. tune this based on your buttons
