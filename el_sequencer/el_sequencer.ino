@@ -7,10 +7,6 @@
  *
  */
 
-/*
- * END you can easily customize these
- */
-
 #define MAX_WIRES 6  // todo: multiplexer to get to this to 8
 #define INPUT_A A2
 #define INPUT_B A3
