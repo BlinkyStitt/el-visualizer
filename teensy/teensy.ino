@@ -37,7 +37,7 @@ float numbPercent = 0.75;  // how much of the average level to subtract from the
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 uint  audioShieldMicGain = 63;  // decibels
 
-unsigned long randomizeOutputMs = 0;  // 1000 * 60 * 5;  // if 0, don't randomize the outputs
+unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
 unsigned long maxOffMs = 7000;  // how long to be off before blinking morse cod
 
 // how long to blink for morse code
