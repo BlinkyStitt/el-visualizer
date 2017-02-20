@@ -5,6 +5,8 @@
  *
  * When inputs are HIGH, the matching outputs are set to HIGH.
  *
+ * TODO: Use SPI instead of a bunch of inputs and outputs
+ *
  */
 
 #define MAX_WIRES 6  // todo: multiplexer to get to this to 8
@@ -27,7 +29,7 @@ const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPU
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
-  delay(250);
+  delay(200);
   Serial.println("Starting...");
 
   for (int i = 0; i < MAX_WIRES; i++) {
@@ -37,6 +39,8 @@ void setup() {
 }
 
 void loop() {
+  // todo: detect if a wire is floating somehow and do a pretty pattern instead
+
   for (int i = 0; i < MAX_WIRES; i++) {
     // read everything as analog since A6 and A7 can't do digital reads
     int inputValue = analogRead(inputPins[i]);

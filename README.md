@@ -151,3 +151,9 @@ To configure the visualizer, various options are read off files in the root of S
     RANDMS.TXT = randomizeOutputMs
 
 When running, the current version of the teensy program is written to VERSION.TXT
+
+
+Ideas
+-----
+THE BEAT SPECTRUM: A NEW APPROACH TO RHYTHM ANALYSIS - https://ai2-s2-pdfs.s3.amazonaws.com/32f3/b96e595c12290b181c54b88dbacb9ce53ea5.pdf
+  "A fast Fourier transform is performed on each frame, and the logarithm of the magnitude of the result estimates the power"

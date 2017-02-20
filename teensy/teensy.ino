@@ -1,9 +1,9 @@
 /* control for the Teensy 3.2 in Bryan's Sound-reactive EL Jacket
  *
- * when it is quiet, lights flash out morse code from an SD card
+ * when it is quiet (lol), lights flash out morse code from an SD card.
  * when it is loud, lights flash with the music
  *
- * TODO: analog button press to set minInputSensitivity
+ * TODO: Use SPI instead of a bunch of inputs and outputs
  *
  */
 
@@ -37,7 +37,7 @@ float numbPercent = 0.75;  // how much of the average level to subtract from the
 float audioShieldVolume = 0.5;  // Set the headphone volume level. Range is 0 to 1.0, but 0.8 corresponds to the maximum undistorted output for a full scale signal. Usually 0.5 is a comfortable listening level
 uint  audioShieldMicGain = 63;  // decibels
 
-unsigned long randomizeOutputMs = 1000 * 60 * 5;  // if 0, don't randomize the outputs
+unsigned long randomizeOutputMs = 0;  // if 0, don't randomize the outputs
 unsigned long maxOffMs = 7000;  // how long to be off before blinking morse cod
 
 // how long to blink for morse code
@@ -576,7 +576,7 @@ void updateNumOutputs(uint& numOutputs) {
   }
 
   // https://en.wikipedia.org/wiki/Piano_key_frequencies
-  // TODO! TUNE THESE
+  // TODO! TUNE THESE maybe figure out an algorithm
   // todo: read this from the sd card, too?
   switch(numOutputs) {
     case 1:
@@ -859,7 +859,7 @@ bool blinkPattern(TimedAction patternArray[], uint& lastPatternActionId, uint pa
 
 void setup() {
   Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
-  delay(750);
+  delay(500);
   Serial.println("Starting...");
 
   for (int i = 0; i < MAX_OUTPUTS; i++) {
@@ -872,6 +872,9 @@ void setup() {
   randomSeed(analogRead(INPUT_PIN_AUDIO_SHIELD_VOLUME_KNOB));
 
   // read config off the SD card
+
+  // setup SPI for the Audio board
+  // todo: also use these pins for communicating with the el_sequencer
   SPI.setMOSI(7);
   SPI.setSCK(14);
   if (SD.begin(10)) {
@@ -967,6 +970,7 @@ void loop() {
     // we turned a light on recently. send output states to the wires
     for (uint i = 0; i < numOutputs; i++) {
       // randomizedOutputIds is actually sorted if randomizeOutputMs is not set
+      // todo: use SPI
       digitalWrite(outputPins[randomizedOutputIds[i]], outputStates[i]);
     }
 

@@ -65,13 +65,13 @@ void loop() {
   // todo: do it as a +/- from the previous so it doesn't bounce from super fast to super slow
   // todo: make sure minOnMs <= onMs <= maxOnMs
 
-  // todo: do different weights
   switch (rand_range(20)) {  // keep the range at our max case +2 so the default has a chance
     case 0:
       Serial.println(" 0 | 0 | 0 |");
       digitalWrite(outputPins[0], LOW);
       digitalWrite(outputPins[1], LOW);
       digitalWrite(outputPins[2], LOW);
+      // todo: decrease onMs
       break;
     case 1:
     case 2:
@@ -126,6 +126,7 @@ void loop() {
       digitalWrite(outputPins[0], HIGH);
       digitalWrite(outputPins[1], HIGH);
       digitalWrite(outputPins[2], HIGH);
+      // todo: increase on Ms
       break;
   }
 
