@@ -66,35 +66,35 @@ Demo Video v1: https://www.youtube.com/watch?v=fih1qalJm8M
 
 ## Putting it Together
 
-#. Label the FTDI cable near the USB end "FTDI".
-#. Label the micro USB cable near the USB end "TEENSY".
-#. Label the JST connector on the inverters "100V AC".
-#. Label the Barrel Jack on the inverters "12v BATT".
-#. Label the EL Wire near the connectors with the color and a number (Red 1, Red 2, Orange 1, etc.)
-#. Wet solder sponge and plug in soldering iron.
-#. Solder the 6 FTDI header pins onto each EL Sequencer board.
-#. Solder header pins to power, ground, and A5 on each EL Sequencer board.
-#. Use the wire strippers, the soldering iron, flux, and solder to prepare the power, ground, and serial wires that will connect the Teensy to the EL sequencers
-#. Solder the header pins and the Teensy together with the wire.
+1. Label the FTDI cable near the USB end "FTDI".
+2. Label the micro USB cable near the USB end "TEENSY".
+3. Label the JST connector on the inverters "100V AC".
+4. Label the Barrel Jack on the inverters "12v BATT".
+5. Label the EL Wire near the connectors with the color and a number (Red 1, Red 2, Orange 1, etc.)
+6. Wet solder sponge and plug in soldering iron.
+7. Solder the 6 FTDI header pins onto each EL Sequencer board.
+8. Solder header pins to power, ground, and A5 on each EL Sequencer board.
+9. Use the wire strippers, the soldering iron, flux, and solder to prepare the power, ground, and serial wires that will connect the Teensy to the EL sequencers
+10. Solder the header pins and the Teensy together with the wire.
   - Sequencer power -> Teensy power
   - Sequencer ground -> Teensy ground
   - Sequencer A5 -> Teensy 0 or Teensy 3. More should work, but you will have to modify the Teensy code
-#. Unplug the soldering iron.
-#. Flash the Sequencers
-  #. Flip the power switch on the sequencer to "USB". (I sometimes had trouble flashing if they were powered through the Teensy)
-  #. Plug the FTDI USB cable into your computer and into the Sequencer. Everything should power up when the sequecer is plugged in.
-  #. Flash the sequencers with the sequencer code.
-  #. Unplug the FTDI cable
-  #. Flip the power switch on the sequencers to "BATT" which is **not** plugged in. Power actually comes from the Teensy.
-#. Plug the USB cable into your computer and the Teensy. Everything should power up when the Teensy is plugged in.
-#. Flash the Teensy with the teensy code. Leave the USB cable connected to your computer.
-#. Plug the EL wire into the sequencers.
-#. Plug the inverters into the sequencers.
-#. Plug the inverters into the battery.
-#. Turn the inverters on.
-#. Turn the battery on. The inverters should make a high pitched whine.
-#. Open the serial console.
-#. Play some music and watch lights blink while the serial console flies by.
+11. Unplug the soldering iron.
+12. Flash the Sequencers
+  1. Flip the power switch on the sequencer to "USB". (I sometimes had trouble flashing if they were powered through the Teensy)
+  2. Plug the FTDI USB cable into your computer and into the Sequencer. Everything should power up when the sequecer is plugged in.
+  3. Flash the sequencers with the sequencer code.
+  4. Unplug the FTDI cable
+  5. Flip the power switch on the sequencers to "BATT" which is **not** plugged in. Power actually comes from the Teensy.
+13. Plug the USB cable into your computer and the Teensy. Everything should power up when the Teensy is plugged in.
+14. Flash the Teensy with the teensy code. Leave the USB cable connected to your computer.
+15. Plug the EL wire into the sequencers.
+16. Plug the inverters into the sequencers.
+17. Plug the inverters into the battery.
+18. Turn the inverters on.
+19. Turn the battery on. The inverters should make a high pitched whine.
+20. Open the serial console.
+21. Play some music and watch lights blink while the serial console flies by.
 
 While debugging, it is helpful to power the Teensy from your computer. For an actual event, it is simpler to use the USB battery power on the Battery Pack.
 
