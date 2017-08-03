@@ -76,16 +76,16 @@ Demo Video v1: https://www.youtube.com/watch?v=fih1qalJm8M
 8. Solder header pins to power, ground, and A5 on each EL Sequencer board.
 9. Use the wire strippers, the soldering iron, flux, and solder to prepare the power, ground, and serial wires that will connect the Teensy to the EL sequencers
 10. Solder the header pins and the Teensy together with the wire.
-  - Sequencer power -> Teensy power
-  - Sequencer ground -> Teensy ground
-  - Sequencer A5 -> Teensy 0 or Teensy 3. More should work, but you will have to modify the Teensy code
+    - Sequencer power -> Teensy power
+    - Sequencer ground -> Teensy ground
+    - Sequencer A5 -> Teensy 0 or Teensy 3. More should work, but you will have to modify the Teensy code
 11. Unplug the soldering iron.
 12. Flash the Sequencers
-  1. Flip the power switch on the sequencer to "USB". (I sometimes had trouble flashing if they were powered through the Teensy)
-  2. Plug the FTDI USB cable into your computer and into the Sequencer. Everything should power up when the sequecer is plugged in.
-  3. Flash the sequencers with the sequencer code.
-  4. Unplug the FTDI cable
-  5. Flip the power switch on the sequencers to "BATT" which is **not** plugged in. Power actually comes from the Teensy.
+    1. Flip the power switch on the sequencer to "USB". (I sometimes had trouble flashing if they were powered through the Teensy)
+    2. Plug the FTDI USB cable into your computer and into the Sequencer. Everything should power up when the sequecer is plugged in.
+    3. Flash the sequencers with the sequencer code.
+    4. Unplug the FTDI cable
+    5. Flip the power switch on the sequencers to "BATT" which is **not** plugged in. Power actually comes from the Teensy.
 13. Plug the USB cable into your computer and the Teensy. Everything should power up when the Teensy is plugged in.
 14. Flash the Teensy with the teensy code. Leave the USB cable connected to your computer.
 15. Plug the EL wire into the sequencers.
