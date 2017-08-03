@@ -1,21 +1,12 @@
-/* Control for the Sparkfun EL Sequencer in Bryan's Sound-reactive EL Jacket
- *
- * It would probably be simpler to use the EL shield, but that doesn't do the
- * 12V -> 3.3V for us and would be more work to solder.
- *
- * When inputs are HIGH, the matching outputs are set to HIGH.
- *
- * TODO: Use SPI instead of a bunch of inputs and outputs
- *
- */
+#include <SoftwareSerial.h>
 
-#define MAX_WIRES 6  // todo: multiplexer to get to this to 8
-#define INPUT_A A2
-#define INPUT_B A3
-#define INPUT_C A4
-#define INPUT_D A5
-#define INPUT_E A6  // analog only
-#define INPUT_F A7  // analog only
+#define MASTER_TX A4
+#define MASTER_RX A3
+
+// TODO: we don't need RX
+SoftwareSerial mySerial(MASTER_RX, MASTER_TX);  // RX, TX
+
+#define NUM_OUTPUTS 8
 #define OUTPUT_A 2
 #define OUTPUT_B 3
 #define OUTPUT_C 4
@@ -24,33 +15,44 @@
 #define OUTPUT_F 7
 #define OUTPUT_G 8
 #define OUTPUT_H 9
-const int inputPins[MAX_WIRES] = {INPUT_A, INPUT_B, INPUT_C, INPUT_D, INPUT_E, INPUT_F}; //, INPUT_G, INPUT_H};
-const int outputPins[MAX_WIRES] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F}; //, OUTPUT_G, OUTPUT_H};
+const int outputPins[NUM_OUTPUTS] = {OUTPUT_A, OUTPUT_B, OUTPUT_C, OUTPUT_D, OUTPUT_E, OUTPUT_F, OUTPUT_G, OUTPUT_H};
+
 
 void setup() {
-  Serial.begin(9600);  // TODO! disable this if debug mode on. optimizer will get rid of it
+  Serial.begin(115200);    // TODO: tune this
+
   delay(200);
   Serial.println("Starting...");
 
-  for (int i = 0; i < MAX_WIRES; i++) {
-    pinMode(inputPins[i], INPUT);
+  mySerial.begin(115200);    // TODO: tune this
+
+  // pinMode(MASTER_TX, OUTPUT);
+  pinMode(MASTER_RX, INPUT);
+
+  for (int i = 0; i < NUM_OUTPUTS; i++) {
+    Serial.print(i);
     pinMode(outputPins[i], OUTPUT);
   }
+
+  Serial.println("Started...");
 }
 
 void loop() {
-  // todo: detect if a wire is floating somehow and do a pretty pattern instead
+  if (mySerial.available()) {
+    unsigned char data = mySerial.read();
 
-  for (int i = 0; i < MAX_WIRES; i++) {
-    // read everything as analog since A6 and A7 can't do digital reads
-    int inputValue = analogRead(inputPins[i]);
-    if (inputValue > 500) {
-      digitalWrite(outputPins[i], HIGH);
-      Serial.print(" 1 |");
-    } else {
-      digitalWrite(outputPins[i], LOW);
-      Serial.print("   |");
+    for (int i = 0; i < NUM_OUTPUTS; i++) {
+      if (bitRead(data, i) == 1) {
+        digitalWrite(outputPins[i], HIGH);
+        Serial.print(" 1 |");
+      } else {
+        digitalWrite(outputPins[i], LOW);
+        Serial.print("   |");
+      }
     }
+    Serial.print(" ");
+
+    Serial.println(data);
+    Serial.flush();
   }
-  Serial.println();
 }

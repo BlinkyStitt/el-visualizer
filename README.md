@@ -1,159 +1,106 @@
+# EL Visualizer
+
 **Under Construction**
 
-Demo Video: https://www.youtube.com/watch?v=fih1qalJm8M
+Control el wires with the sound around you.
 
-Control 1-8 el wires with the sound around you.
+Demo Video v2: https://www.youtube.com/watch?v=WvVMDnH78To
 
-If there is no sound around you for 5 seconds, it reads `morse.txt` off an SD card and blinks that on random wires instead.
-
-If the EL Sequencer board doesn't receive any inputs at all for 7 seconds, it will blink wires randomly for random amounts of time.
+Demo Video v1: https://www.youtube.com/watch?v=fih1qalJm8M
 
 
-Tools
------
+## Tools
 
 - Soldering Iron
 
 - FTDI Cable 5V - $17.95 - https://www.sparkfun.com/products/9718
 
-- USB micro cable with the red wire cut
+- USB micro cable for powering the Teensy
 
 - Small philips screw driver
 
 
-Parts
------
+## Parts
 
 - Solder and Flux
 
-- [Multicolored jumper cables - $10.00](https://amzn.com/B00M5WLZDW)
+- [Multicolored jumper cables - $10.00](https://smile.amazon.com/dp/B00M5WLZDW)
   - Any wire works, but these are easy to split apart and were nice while experimenting with the breadboard.
   - Once I was done experimenting with the breadboard and ready to solder, I cut the ends off, stripped the ends a bit, and melted some solder into the bare wire.
 
-- [12v Portable Battery Pack - $23.99](http://smile.amazon.com/dp/B00MHNQIR2)
-  - Fully charged, this has lasted over 8 hours for me.
+- [12v Portable Battery Pack - $33.99](https://smile.amazon.com/dp/B00ME3ZH7C)
+  - I like this one because it has a 12v port for the inverters and a USB port for the Teensy
+  - If you get a battery pack without a USB power, you will need to power the Teensy's USB some other way.
+  - Fully charged, this has lasted over 12 hours for me. Out lasting the event is important because you might not always have time to charge between events.
 
 - [Teensy 3.2 Audio Tutorial Kit - $60.00](https://www.pjrc.com/store/audio_tutorial_kit.html)
   - You can save some money by buying the Teensy, the Audio Adaptor, some extra parts, and soldering it all together, but the kit is a lot easier and then you can do all their awesome tutorials.
 
+- up to 7 [Sparkfun EL Sequencer - $34.95](https://www.sparkfun.com/products/12781)
+  - Each sequencer lets you connect up to 8 EL wires
+  - I am not sure what the maximum is yet, but I think you could easily do up to 7. That is a lot of wire!
+  - You will have to solder some headers
+
 - [Break Away Headers Straight - $1.50](https://www.sparkfun.com/products/116)
-  - 6 for the FTDI headers
-  - 8 for the Teensy
+  - 9 pins per EL Sequencer
 
-- [Sparkfun EL Sequencer - $34.95](https://www.sparkfun.com/products/12781)
-  - You will have to solder some header pins and close a jumper.
+- up to 7 [EL Inverter 12v - $14.95](https://www.sparkfun.com/products/10469)
+  - You will need one of these for each EL Sequencer
+  - The site says it powers 10-15m of EL Wire, but I've run 6 3m strands and its pretty bright. It is rare that you will need to power all the wires at the same time.
 
-- [EL Inverter 12v - $14.95](https://www.sparkfun.com/products/10469)
-  - The site says it powers 10-15m of EL Wire, but I've run 6 3m strands and its pretty bright.
+- 0 to 6 [DC 5.5x2.1mm 1 Female to 2 Male Power Splitter Cable](https://www.sparkfun.com/products/10469)
+  - 1 of these comes with the Battery Pack. You will need 1 more per additional EL Sequencer.
 
-- [Jumper Wire - JST Black Red - $0.95](https://www.sparkfun.com/products/8670)
-  - This will replace the barrel plug cable on the Inverter so that it can be powered by the board.
-
-- [Barrel Jack to 2-pin JST - $2.95](https://www.sparkfun.com/products/8734)
-
-- Up to 6 strands of [EL Wire - $9.95 each](https://www.sparkfun.com/products/10200)
-  - A later version of this visualizer will support up to 8 strands and "chasing" wire.
+- Lots of [EL Wire - $9.95 each](https://www.sparkfun.com/products/10200)
 
 - Clear thread or fishing line.
 
-- A loose fitting jacket that is easy to dance in and will keep you warm outside at night.
+- Something to attach the wire to (Jackets, shower curtains, or whatever else you want to light up).
 
 
-Software
---------
+## Software
 
-- Teensy
-
-- Arduino 2 IDE
+- [Teensyduino](https://www.pjrc.com/teensy/teensyduino.html)
+  - The install steps will walk you through installing the Arduino IDE
 
 
-Putting it Together
--------------------
+## Putting it Together
 
 #. Label the FTDI cable near the USB end "FTDI".
-#. Label the micro USB cable near the USB end "NO POWER/TEENSY".
-#. Label the existing JST connector on the inverter "100V AC".
-#. Label the new JST connector for the inverter "12V DC".
-#. Label the Barrel Jack to 2-pin JST connector "12v BATT".
+#. Label the micro USB cable near the USB end "TEENSY".
+#. Label the JST connector on the inverters "100V AC".
+#. Label the Barrel Jack on the inverters "12v BATT".
+#. Label the EL Wire near the connectors with the color and a number (Red 1, Red 2, Orange 1, etc.)
 #. Wet solder sponge and plug in soldering iron.
-#. Remove the quality control sticker from the inverter.
-#. Unscrew the inverter and open it up.
-#. Replace the barrel plug on the inverter with the JST connector.
-#. Place a dot of solder on SJ1 so the 12V battery directly powers the inverter.
-#. Solder the 6 FTDI header pins in place.
-#. Solder the power, ground, and 6 analog header pins in place.
-#. Use the wire strippers, the soldering iron, flux, and solder to prepare the 8 wires that will connect the Teensy to the EL sequencer as well as the header pins.
+#. Solder the 6 FTDI header pins onto each EL Sequencer board.
+#. Solder header pins to power, ground, and A5 on each EL Sequencer board.
+#. Use the wire strippers, the soldering iron, flux, and solder to prepare the power, ground, and serial wires that will connect the Teensy to the EL sequencers
 #. Solder the header pins and the Teensy together with the wire.
   - Sequencer power -> Teensy power
   - Sequencer ground -> Teensy ground
-  - Sequencer A2 -> Teensy 0
-  - Sequencer A3 -> Teensy 1
-  - Sequencer A4 -> Teensy 2
-  - Sequencer A5 -> Teensy 3
-  - Sequencer A6 -> Teensy 4
-  - Sequencer A7 -> Teensy 5
+  - Sequencer A5 -> Teensy 0 or Teensy 3. More should work, but you will have to modify the Teensy code
 #. Unplug the soldering iron.
-#. Insulate the capacitors inside the inverter somehow. Hot glue? Epoxy? Rubber insulation?
-#. Glue down the new JST connector on the inverter.
-#. Screw the inverter back together.
-#. Plug the Barrel Jack to 2-pin JST connector into the Sequencer board.
-#. Plug the inverter into the sequencer board.
-#. Flip the power switch to "BATT".
-#. Plug the battery into the Barrel Jack.
-#. Plug the FTDI cable into the sequencer board.
-#. Plug the micro USB into the Teensy.
-#. Plug the USB from the sequencer into your computer.
-#. Plug your EL wire into the sequencer
-#. Turn the battery on.
-#. Upload "el_sequencer.ino".
+#. Flash the Sequencers
+  #. Flip the power switch on the sequencer to "USB". (I sometimes had trouble flashing if they were powered through the Teensy)
+  #. Plug the FTDI USB cable into your computer and into the Sequencer. Everything should power up when the sequecer is plugged in.
+  #. Flash the sequencers with the sequencer code.
+  #. Unplug the FTDI cable
+  #. Flip the power switch on the sequencers to "BATT" which is **not** plugged in. Power actually comes from the Teensy.
+#. Plug the USB cable into your computer and the Teensy. Everything should power up when the Teensy is plugged in.
+#. Flash the Teensy with the teensy code. Leave the USB cable connected to your computer.
+#. Plug the EL wire into the sequencers.
+#. Plug the inverters into the sequencers.
+#. Plug the inverters into the battery.
+#. Turn the inverters on.
+#. Turn the battery on. The inverters should make a high pitched whine.
 #. Open the serial console.
-#. Unplug the FTDI cable from your computer.
-#. Plug the USB **WITH THE RED WIRE CUT** from the Teensy into your computer.
-#. Upload "teensy.ino"
-#. Open the serial console.
-#. Play some music.
+#. Play some music and watch lights blink while the serial console flies by.
+
+While debugging, it is helpful to power the Teensy from your computer. For an actual event, it is simpler to use the USB battery power on the Battery Pack.
+
+If you flash the Teensy while the inverters are powered, the lights will flicker, but nothing will break.
 
 
-Configuring
------------
+## Ideas
 
-To configure the visualizer, various options are read off files in the root of SD card:
-
-  MORSE.TXT
-  PATTERN.TXT (not yet implemented)
-
-  Booleans (1 is True):
-    DEBUG.TXT = debug
-    SNSBTNEN.TXT = sensitivityButtonEnabled
-
-  Floats:
-    VOLUME.TXT = audioShieldVolume
-    AUTOEMA.TXT = automaticSensitivityEMAAlpha
-    MINRANGE.TXT = minInputRange
-    MINSENSE.TXT = minInputSensitivity
-    NUMBEMA.TXT = numbEMAAlpha
-    NUMBPCT.TXT = numbPercent
-
-  Unsigned Integers:
-    MICGAIN.TXT = audioShieldMicGain
-    FFTIGNOR.TXT = fftIgnoredBins
-    MAXON.TXT = maxOnOutputs
-    MINONMS.TXT = minOnMs
-    MORSEDAH.TXT = morseDahMs
-    MORSEDIT.TXT = morseDitMs
-    MORSEELE.TXT = morseElementSpaceMs
-    MORSESPA.TXT = morseWordSpaceMs
-    NUMOUT.TXT = numOutputs
-    SNSBTNMS.TXT = sensitivityButtonBounceMs
-
-  Unsigned Longs:
-    MAXOFFMS.TXT = maxOffMs
-    RANDMS.TXT = randomizeOutputMs
-
-When running, the current version of the teensy program is written to VERSION.TXT
-
-
-Ideas
------
-THE BEAT SPECTRUM: A NEW APPROACH TO RHYTHM ANALYSIS - https://ai2-s2-pdfs.s3.amazonaws.com/32f3/b96e595c12290b181c54b88dbacb9ce53ea5.pdf
-  "A fast Fourier transform is performed on each frame, and the logarithm of the magnitude of the result estimates the power"
+v3 will use SPI instead of Serial and so will be able to support even more outputs.
