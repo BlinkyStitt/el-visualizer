@@ -17,8 +17,6 @@ Demo Video v1: https://www.youtube.com/watch?v=fih1qalJm8M
 
 - USB micro cable for powering the Teensy
 
-- Small philips screw driver
-
 
 ## Parts
 
