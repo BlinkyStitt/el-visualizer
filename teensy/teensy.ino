@@ -31,7 +31,7 @@ elapsedMillis elapsedMs = 0;    // todo: do we care if this overflows?
 const unsigned int numOutputs = 1;  // TODO: eventually go up to 3
 unsigned char output[numOutputs];
 
-float decay = 0.75;  // EMA factor  // TODO: tune this. read from SD card
+float decay = 0.60;  // EMA factor  // TODO: tune this. read from SD card
 
 // An array to hold the frequency bands that will be turned into on/off signals
 const int numLevels = 8 * numOutputs;
@@ -45,9 +45,6 @@ unsigned long lastUpdate = 0;
 // set the sequencer value as low as looks good with your lights.
 // set the teensy value to the value that looks good with the type of music you are listening to
 uint minOnMs = 150; // 118? 150? 184? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection? read from the SD card? have a button to switch between common settings?
-
-// minimum level that will turn a light on
-float minLevel = 0.23;  // todo: tune this. read this from the SD card. maybe connect to the pot
 
 
 void setup() {
@@ -88,6 +85,8 @@ void setup() {
   audioShield.eqBands(-0.80, -0.10, 0, 0.10, 0.33);  // todo: tune this
 
   audioShield.unmuteHeadphone();  // for debugging
+
+  Serial.println("Starting...");
 }
 
 // we could/should pass fft and level as args
@@ -241,6 +240,18 @@ void loop() {
     // Serial.print(vol);
     // Serial.print(" | ");
 
+    // float maxLevel = 0;
+    // for (int i = 0; i < numLevels; i++) {
+    //   averageLevel[i] = (decay * averageLevel[i]) + ((1 - decay) * currentLevel[i]);
+
+    //   if (maxLevel < currentLevel[i]) {
+    //     maxLevel = currentLevel[i];
+    //   }
+    // }
+
+    // Serial.print(maxLevel);
+    // Serial.print(" | ");
+
     // output the levels
     numOn = 0;
     for (int i = 0; i < numLevels; i++) {
@@ -248,9 +259,9 @@ void loop() {
 
       // todo: limit the number of lights we turn on to the loudest 6 of 8 instead of the first 6
       //       i think we might still turn on 7 here with our turnOffMsArray logic :(
-      if ((numOn < 6) and (currentLevel[i] > averageLevel[i] + 0.15)) {   // TODO: tune this
+      if ((numOn < 6) and (currentLevel[i] > averageLevel[i] + 0.20)) {   // TODO: tune this
         // debug print
-        Serial.print(currentLevel[i] - averageLevel[i]);
+        Serial.print(currentLevel[i] - averageLevel[i] - 0.10);
         Serial.print(" ");
 
         // prepare to send over serial
