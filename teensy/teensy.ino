@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <SerialFlash.h>
+#include <SoftwareSerial.h>
 #include <elapsedMillis.h>
 
 // Use these with the audio adaptor board
@@ -10,6 +11,12 @@
 #define SDCARD_MOSI_PIN  7
 #define SDCARD_SCK_PIN   14
 #define VOLUME_KNOB      A2
+
+// TODO: maybe better to use SPI, but this is less to solder
+// we don't even use RX on this
+// TODO: can we set the pin to null somehow?
+SoftwareSerial            mySerial1(2, 3);  // RX, TX
+SoftwareSerial            mySerial2(2, 4);  // RX, TX
 
 AudioInputI2S             i2s1;           //xy=139,91
 AudioOutputI2S            i2s2;           //xy=392,32
@@ -20,13 +27,18 @@ AudioControlSGTL5000      audioShield;    //xy=366,225
 
 elapsedMillis elapsedMs = 0;    // todo: do we care if this overflows?
 
-// An array to hold the frequency bands
-const int maxLevels = 8;  // TODO: should this be a define?
-float level[maxLevels];
+// 1 byte one for each sequencer board
+const unsigned int numOutputs = 1;  // TODO: eventually go up to 3
+unsigned char output[numOutputs];
 
-int numLevels = maxLevels;  // TODO: read this from the SD card
+float decay = 0.75;  // EMA factor  // TODO: tune this. read from SD card
 
-unsigned long turnOffMsArray[maxLevels];
+// An array to hold the frequency bands that will be turned into on/off signals
+const int numLevels = 8 * numOutputs;
+float averageLevel[numLevels];
+float currentLevel[numLevels];
+
+unsigned long turnOffMsArray[numLevels];
 unsigned long lastUpdate = 0;
 
 // the sequencer also has this minOnMs logi
@@ -34,30 +46,15 @@ unsigned long lastUpdate = 0;
 // set the teensy value to the value that looks good with the type of music you are listening to
 uint minOnMs = 150; // 118? 150? 184? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection? read from the SD card? have a button to switch between common settings?
 
-// 1 byte one for the sequencer board
-unsigned char output = 0;
-
-// An array to hold an EMA of the 16 frequency bands
-// When the signal drops quickly, these are used to lower the on-screen level
-// slowly which looks more pleasing to corresponds to human sound perception.
-float smoothing = 0.60;  // todo: tune this and read this from the SD card
-float smoothLevel[maxLevels];
-
-float decay = 0.9997;  // TODO: read this from the SD card
-
-// TODO: I'm still not sure I like how minMin interacts with scaling the levels
-float minMinLevel = 0.23;  // todo: tune this. read this from the SD card. maybe connect to the pot
-float minMaxLevel = 0.60;  // this is the lowest magnitude that will return a 1.  todo: read this from the SD card
-
-float maxLevel = minMaxLevel;
-float minLevel = minMinLevel;
-
-float scaleFactor = maxLevel - minLevel;
+// minimum level that will turn a light on
+float minLevel = 0.23;  // todo: tune this. read this from the SD card. maybe connect to the pot
 
 
 void setup() {
   Serial.begin(115200);  // todo: tune this
   Serial1.begin(115200);  // todo: tune this
+  mySerial1.begin(115200);  // todo: tune this
+  mySerial2.begin(115200);  // todo: tune this
 
   // delay(200);
 
@@ -110,93 +107,119 @@ void levelFromFFT() {
     case 0:
     case 1:
       // TODO: this doesn't look right on our line graph
-      level[0] =  fft1024.read(0, 465);  // TODO: tune this 465 = 20k
+      currentLevel[0]  = fft1024.read(0, 465);  // TODO: tune this 465 = 20k
       break;
     case 2:
-      level[0] =  fft1024.read(1, 10);  // TODO: tune this
-      level[1] =  fft1024.read(11, 82);  // TODO: tune this
+      currentLevel[0]  = fft1024.read(1, 10);  // TODO: tune this
+      currentLevel[1]  = fft1024.read(11, 82);  // TODO: tune this
       break;
     case 3:
-      level[0] =  fft1024.read(1, 6);  // TODO: tune this
-      level[1] =  fft1024.read(7, 10);  // TODO: tune this
-      level[2] =  fft1024.read(11, 82);  // TODO: tune this
+      currentLevel[0]  = fft1024.read(1, 6);  // TODO: tune this
+      currentLevel[1]  = fft1024.read(7, 10);  // TODO: tune this
+      currentLevel[2]  = fft1024.read(11, 82);  // TODO: tune this
       break;
     case 4:
-      level[0] =  fft1024.read(1, 6);  // TODO: tune this
-      level[1] =  fft1024.read(7, 20);  // TODO: tune this
-      level[2] =  fft1024.read(21, 41);  // TODO: tune this
-      level[3] =  fft1024.read(42, 186);  // TODO: tune this
+      currentLevel[0]  = fft1024.read(1, 6);  // TODO: tune this
+      currentLevel[1]  = fft1024.read(7, 20);  // TODO: tune this
+      currentLevel[2]  = fft1024.read(21, 41);  // TODO: tune this
+      currentLevel[3]  = fft1024.read(42, 186);  // TODO: tune this
       break;
     case 5:
-      level[0] =  fft1024.read(1, 6);  // TODO: tune this
-      level[1] =  fft1024.read(7, 10);  // TODO: tune this
-      level[2] =  fft1024.read(11, 20);  // TODO: tune this
-      level[3] =  fft1024.read(21, 41);  // TODO: tune this
-      level[4] =  fft1024.read(42, 186);  // TODO: tune this
+      currentLevel[0]  = fft1024.read(1, 6);  // TODO: tune this
+      currentLevel[1]  = fft1024.read(7, 10);  // TODO: tune this
+      currentLevel[2]  = fft1024.read(11, 20);  // TODO: tune this
+      currentLevel[3]  = fft1024.read(21, 41);  // TODO: tune this
+      currentLevel[4]  = fft1024.read(42, 186);  // TODO: tune this
       break;
     case 6:
-      level[0] = fft1024.read(1, 3);   // 110
-      level[1] = fft1024.read(4, 6);   // 220
-      level[2] = fft1024.read(7, 10);  // 440
-      level[3] = fft1024.read(11, 20);  // 880
-      level[4] = fft1024.read(21, 41);  // 1763
-      level[5] = fft1024.read(42, 186);  // 7998 todo: tune this
+      currentLevel[0]  = fft1024.read(1, 3);   // 110
+      currentLevel[1]  = fft1024.read(4, 6);   // 220
+      currentLevel[2]  = fft1024.read(7, 10);  // 440
+      currentLevel[3]  = fft1024.read(11, 20);  // 880
+      currentLevel[4]  = fft1024.read(21, 41);  // 1763
+      currentLevel[5]  = fft1024.read(42, 186);  // 7998 todo: tune this
       break;
     case 7:
-      level[0] =  fft1024.read(1, 3);  // TODO: tune this
-      level[1] =  fft1024.read(4, 6);  // TODO: tune this
-      level[2] =  fft1024.read(7, 10);  // TODO: tune this
-      level[3] =  fft1024.read(11, 20);  // TODO: tune this
-      level[4] =  fft1024.read(21, 41);  // TODO: tune this
-      level[5] =  fft1024.read(42, 82);  // TODO: tune this
-      level[6] =  fft1024.read(83, 186);  // TODO: tune this
+      currentLevel[0]  = fft1024.read(1, 3);  // TODO: tune this
+      currentLevel[1]  = fft1024.read(4, 6);  // TODO: tune this
+      currentLevel[2]  = fft1024.read(7, 10);  // TODO: tune this
+      currentLevel[3]  = fft1024.read(11, 20);  // TODO: tune this
+      currentLevel[4]  = fft1024.read(21, 41);  // TODO: tune this
+      currentLevel[5]  = fft1024.read(42, 82);  // TODO: tune this
+      currentLevel[6]  = fft1024.read(83, 186);  // TODO: tune this
       break;
-    default:
     case 8:
-      // level[0] =  fft1024.read(1, 6);  // TODO: tune this
-      // level[1] =  fft1024.read(7, 22);  // TODO: tune this
-      // level[2] =  fft1024.read(23, 32);  // TODO: tune this
-      // level[3] =  fft1024.read(33, 46);  // TODO: tune this
-      // level[4] =  fft1024.read(47, 66);  // TODO: tune this
-      // level[5] =  fft1024.read(67, 93);  // TODO: tune this
-      // level[6] =  fft1024.read(94, 184);  // TODO: tune this
-      // level[7] =  fft1024.read(185, 465);  // 396 = 17k  // TODO: tune this
-      level[0] =  fft1024.read(1, 15);    // TODO: ignore bin 0?
-      level[1] =  fft1024.read(16, 32);
-      level[2] =  fft1024.read(33, 46);
-      level[3] =  fft1024.read(47, 66);
-      level[4] = fft1024.read(67, 93);
-      level[5] = fft1024.read(94, 131);
-      level[6] = fft1024.read(132, 184);
-      level[7] = fft1024.read(185, 419);
+      currentLevel[0]  = fft1024.read(1, 15);
+      currentLevel[1]  = fft1024.read(16, 32);
+      currentLevel[2]  = fft1024.read(33, 46);
+      currentLevel[3]  = fft1024.read(47, 66);
+      currentLevel[4]  = fft1024.read(67, 93);
+      currentLevel[5]  = fft1024.read(94, 131);
+      currentLevel[6]  = fft1024.read(132, 184);
+      currentLevel[7]  = fft1024.read(185, 419);  // 18kHz
       break;
-    // case 9:
-    // case 10:
-    // case 11:
-    // case 12:
-    // case 13:
-    // case 14:
-    // case 15:
-    // case 16:
-    //   // these bands are from pjrc. we should try to have the other ones match this growth rate
-    //   // TODO: maybe skip the top and bottom bins?
-    //   level[0] =  fft1024.read(0);  // TODO: skip this bin?
-    //   level[1] =  fft1024.read(1);
-    //   level[2] =  fft1024.read(2, 3);
-    //   level[3] =  fft1024.read(4, 6);
-    //   level[4] =  fft1024.read(7, 10);
-    //   level[5] =  fft1024.read(11, 15);
-    //   level[6] =  fft1024.read(16, 22);
-    //   level[7] =  fft1024.read(23, 32);
-    //   level[8] =  fft1024.read(33, 46);
-    //   level[9] =  fft1024.read(47, 66);
-    //   level[10] = fft1024.read(67, 93);
-    //   level[11] = fft1024.read(94, 131);
-    //   level[12] = fft1024.read(132, 184);
-    //   level[13] = fft1024.read(185, 257);
-    //   level[14] = fft1024.read(258, 359);
-    //   level[15] = fft1024.read(360, 465);   // 465 = 20k
-    //   break;
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 14:
+    case 15:
+    case 16:
+    default:
+      // these bands are from pjrc. we should try to have the other ones match this growth rate
+      // TODO: maybe skip the top and bottom bins?
+      currentLevel[0]  = fft1024.read(0);  // TODO: skip this bin?
+      currentLevel[1]  = fft1024.read(1);
+      currentLevel[2]  = fft1024.read(2, 3);
+      currentLevel[3]  = fft1024.read(4, 6);
+      currentLevel[4]  = fft1024.read(7, 10);
+      currentLevel[5]  = fft1024.read(11, 15);
+      currentLevel[6]  = fft1024.read(16, 22);
+      currentLevel[7]  = fft1024.read(23, 32);
+      currentLevel[8]  = fft1024.read(33, 46);
+      currentLevel[9]  = fft1024.read(47, 66);
+      currentLevel[10] = fft1024.read(67, 93);
+      currentLevel[11] = fft1024.read(94, 131);
+      currentLevel[12] = fft1024.read(132, 184);
+      currentLevel[13] = fft1024.read(185, 257);
+      currentLevel[14] = fft1024.read(258, 359);
+      currentLevel[15] = fft1024.read(360, 465);   // 465 = 20k
+      break;
+    case 17:
+    case 18:
+    case 19:
+    case 20:
+    case 21:
+    case 23:
+    case 24:
+      // these bands are from pjrc. we should try to have the other ones match this growth rate
+      // TODO: maybe skip the top and bottom bins?
+      currentLevel[0]  = fft1024.read(0);  // TODO: skip this bin?
+      currentLevel[1]  = fft1024.read(1);
+      currentLevel[2]  = fft1024.read(2, 3);
+      currentLevel[3]  = fft1024.read(4, 6);
+      currentLevel[4]  = fft1024.read(7, 10);
+      currentLevel[5]  = fft1024.read(11, 15);
+      currentLevel[6]  = fft1024.read(16, 22);
+      currentLevel[7]  = fft1024.read(23, 32);
+      currentLevel[8]  = fft1024.read(33, 46);
+      currentLevel[9]  = fft1024.read(47, 66);
+      currentLevel[10] = fft1024.read(67, 93);
+      currentLevel[11] = fft1024.read(94, 131);
+      currentLevel[12] = fft1024.read(132, 184);
+      currentLevel[13] = fft1024.read(185, 257);
+      currentLevel[14] = fft1024.read(258, 359);
+      currentLevel[15] = fft1024.read(360, 465);
+      currentLevel[16] = fft1024.read(360, 465);
+      currentLevel[17] = fft1024.read(360, 465);
+      currentLevel[18] = fft1024.read(360, 465);
+      currentLevel[19] = fft1024.read(360, 465);
+      currentLevel[20] = fft1024.read(360, 465);
+      currentLevel[21] = fft1024.read(360, 465);
+      currentLevel[22] = fft1024.read(360, 465);
+      currentLevel[23] = fft1024.read(360, 465);   // 465 = 20k
+      break;
   }
 }
 
@@ -218,53 +241,20 @@ void loop() {
     // Serial.print(vol);
     // Serial.print(" | ");
 
-    minLevel = maxLevel;  // reset minLevel
-    for (int i = 0; i < numLevels; i++) {
-      // Smooth using exponential moving average
-      if (level[i] > smoothLevel[i]) {
-        // jump up immediatly
-        smoothLevel[i] = level[i];
-      } else {
-        // slide down slowly
-        // smoothLevel[i] = (smoothing * smoothLevel[i]) + ((1 - smoothing) * level[i]);
-        // TODO: maybe we don't actually need smoothLevel
-        smoothLevel[i] = level[i];
-      }
-
-      // Find max and min values ever displayed across whole spectrum
-      if (smoothLevel[i] > maxLevel) {
-        maxLevel = smoothLevel[i];
-      } else if (smoothLevel[i] < minLevel) {
-        // TODO: i'm not sure how much tracking the minLevel like this does.
-        // TODO: i think we should maybe also base minLevel off some % of maxLevel, too
-        minLevel = max(smoothLevel[i], minMinLevel);
-      }
-    }
-
-    Serial.print(minLevel);
-    Serial.print(" ");
-    Serial.print(maxLevel);
-    Serial.print(" | ");
-
-    // Calculate the total range of smoothed spectrum
-    // consider 95% of the loudest as equally loud as the loudest
-    scaleFactor = (maxLevel - minLevel) * 0.95;
-
     // output the levels
     numOn = 0;
     for (int i = 0; i < numLevels; i++) {
-      // scale so that 1 is the loudest sound we've heard
-      float scaledLevel = (smoothLevel[i] - minLevel) / scaleFactor;
+      averageLevel[i] = (decay * averageLevel[i]) + ((1 - decay) * currentLevel[i]);
 
       // todo: limit the number of lights we turn on to the loudest 6 of 8 instead of the first 6
       //       i think we might still turn on 7 here with our turnOffMsArray logic :(
-      if ((numOn < 6) and (scaledLevel > 0.04)) {   // TODO: tune this
+      if ((numOn < 6) and (currentLevel[i] > averageLevel[i] + 0.15)) {   // TODO: tune this
         // debug print
-        Serial.print(scaledLevel);
+        Serial.print(currentLevel[i] - averageLevel[i]);
         Serial.print(" ");
 
         // prepare to send over serial
-        bitSet(output, i);
+        bitSet(output[i / 8], i % 8);
 
         // make sure we stay on for a minimum amount of time
         turnOffMsArray[i] = elapsedMs + minOnMs;
@@ -280,7 +270,7 @@ void loop() {
           numOn += 1;
         } else {
           // the output has been on for at least minOnMs and is quiet now. turn it off
-          bitClear(output, i);
+          bitClear(output[i / 8], i % 8);
 
           // debug print
           Serial.print(" -   ");
@@ -293,21 +283,21 @@ void loop() {
     Serial.print(AudioMemoryUsageMax());
     Serial.print(" blocks | ");
 
-    // send byte to Serial1
-    Serial1.write(output);
+    // TODO: we should use SPI here instead
+    // send the bytes to their devices
+    Serial1.write(output[0]);
+    mySerial1.write(output[1]);
+    mySerial2.write(output[2]);
 
     // make sure that first byte finished writing
     Serial1.flush();
-
-    // decay maxLevel
-    maxLevel = max(minMaxLevel, maxLevel * decay);
+    // mySerial doesn't have a flush method :(
 
     // TODO: do something to minLevel?
 
     Serial.print(elapsedMs - lastUpdate);
-    Serial.print("ms | ");
+    Serial.println("ms");
     lastUpdate = elapsedMs;
-    Serial.println(output);
     Serial.flush();
   }
 }
