@@ -28,14 +28,24 @@ AudioControlSGTL5000      audioShield;    //xy=366,225
 elapsedMillis elapsedMs = 0;    // todo: do we care if this overflows?
 
 // 1 byte one for each sequencer board
-const unsigned int numOutputs = 1;  // TODO: eventually go up to 3
+const int numOutputs = 1;  // TODO: eventually go up to 3
 unsigned char output[numOutputs];
 
-float decay = 0.60;  // EMA factor  // TODO: tune this. read from SD card
+int numOn[numOutputs] = {0};
+int maxOnPerOutput = 6;
+
+// EMA factor  // TODO: tune this. read from SD card
+float decayAvg = 0.60;
+// how close a sound has to be to the loudest sound in order to activate
+float activateDifference = 0.99;
+// simple % decrease
+float decayMax = 0.98;
+float minMaxLevel = 0.15 / activateDifference;
 
 // An array to hold the frequency bands that will be turned into on/off signals
 const int numLevels = 8 * numOutputs;
-float averageLevel[numLevels];
+float avgLevel[numLevels];
+float maxLevel[numLevels];
 float currentLevel[numLevels];
 
 unsigned long turnOffMsArray[numLevels];
@@ -44,7 +54,7 @@ unsigned long lastUpdate = 0;
 // the sequencer also has this minOnMs logi
 // set the sequencer value as low as looks good with your lights.
 // set the teensy value to the value that looks good with the type of music you are listening to
-uint minOnMs = 150; // 118? 150? 184? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection? read from the SD card? have a button to switch between common settings?
+uint minOnMs = 118; // 118? 150? 184? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection? read from the SD card? have a button to switch between common settings?
 
 
 void setup() {
@@ -52,8 +62,6 @@ void setup() {
   Serial1.begin(115200);  // todo: tune this
   mySerial1.begin(115200);  // todo: tune this
   mySerial2.begin(115200);  // todo: tune this
-
-  // delay(200);
 
   // setup SPI for the Audio board (which has an SD card reader)
   SPI.setMOSI(SDCARD_MOSI_PIN);
@@ -66,7 +74,7 @@ void setup() {
   // TODO: read SD card here to configure things
 
   // Audio requires memory to work. I haven't seen this go over 11
-  AudioMemory(12);
+  AudioMemory(14);
 
   // Enable the audio shield and set the output volume.
   audioShield.enable();
@@ -222,8 +230,6 @@ void levelFromFFT() {
   }
 }
 
-int numOn = 0;
-
 
 void loop() {
   // TODO: determine the note being played?
@@ -240,53 +246,69 @@ void loop() {
     // Serial.print(vol);
     // Serial.print(" | ");
 
-    // float maxLevel = 0;
-    // for (int i = 0; i < numLevels; i++) {
-    //   averageLevel[i] = (decay * averageLevel[i]) + ((1 - decay) * currentLevel[i]);
-
-    //   if (maxLevel < currentLevel[i]) {
-    //     maxLevel = currentLevel[i];
-    //   }
-    // }
-
-    // Serial.print(maxLevel);
-    // Serial.print(" | ");
-
     // output the levels
-    numOn = 0;
     for (int i = 0; i < numLevels; i++) {
-      averageLevel[i] = (decay * averageLevel[i]) + ((1 - decay) * currentLevel[i]);
+      Serial.print("| ");
 
-      // todo: limit the number of lights we turn on to the loudest 6 of 8 instead of the first 6
-      //       i think we might still turn on 7 here with our turnOffMsArray logic :(
-      if ((numOn < 6) and (currentLevel[i] > averageLevel[i] + 0.20)) {   // TODO: tune this
+      Serial.print(currentLevel[i]);
+      Serial.print(" ");
+
+      // TODO: Do something with average level
+      // avgLevel[i] = (decayAvg * avgLevel[i]) + ((1 - decayAvg) * currentLevel[i]);
+      // Serial.print(avgLevel[i]);
+      // Serial.print(" ");
+
+      if (currentLevel[i] > maxLevel[i]) {
+        maxLevel[i] = currentLevel[i];
+      }
+      Serial.print(maxLevel[i]);
+      Serial.print(" ");
+
+      // todo: do something with avgLevel here too. like make sure that its less < max by some percentage
+      if ((numOn[i / 8] < maxOnPerOutput) and (currentLevel[i] >= maxLevel[i] * activateDifference)) {
         // debug print
-        Serial.print(currentLevel[i] - averageLevel[i] - 0.10);
+        Serial.print(currentLevel[i]);
         Serial.print(" ");
 
-        // prepare to send over serial
-        bitSet(output[i / 8], i % 8);
+        // make sure we don't turn too many lights on. some configurations max out at 6.
+        // TODO: do this better. sort the loudest outputs first
+        if (not bitRead(output[i / 8], i % 8)) {
+          numOn[i / 8] += 1;
+
+          // prepare to send over serial
+          bitSet(output[i / 8], i % 8);
+        }
 
         // make sure we stay on for a minimum amount of time
+        // if we were already on, extend the time that we stay on
         turnOffMsArray[i] = elapsedMs + minOnMs;
-
-        numOn += 1;
       } else {
+        // the output should be off
         if (elapsedMs < turnOffMsArray[i]) {
-          // the output has not been on for long enough. leave it on.
+          // the output has not been on for long enough to prevent flicker. leave it on.
 
           // debug print
           Serial.print(" *   ");
-
-          numOn += 1;
         } else {
-          // the output has been on for at least minOnMs and is quiet now. turn it off
-          bitClear(output[i / 8], i % 8);
+          // the output has been on for at least minOnMs and is quiet now
+          // turn it off if it is on
+          if (bitRead(output[i / 8], i % 8)) {
+            numOn[i / 8] -= 1;
 
-          // debug print
-          Serial.print(" -   ");
+            // prepare to send over serial
+            bitClear(output[i / 8], i % 8);
+
+            // debug print
+            Serial.print(" -   ");
+          } else {
+            // debug print
+            Serial.print("     ");
+          }
         }
       }
+
+      // decay maxLevel
+      maxLevel[i] = (decayMax * maxLevel[i]) + ((1 - decayMax) * minMaxLevel);
     }
 
     // debug print
@@ -297,14 +319,12 @@ void loop() {
     // TODO: we should use SPI here instead
     // send the bytes to their devices
     Serial1.write(output[0]);
-    mySerial1.write(output[1]);
-    mySerial2.write(output[2]);
+    // mySerial1.write(output[1]);
+    // mySerial2.write(output[2]);
 
     // make sure that first byte finished writing
     Serial1.flush();
     // mySerial doesn't have a flush method :(
-
-    // TODO: do something to minLevel?
 
     Serial.print(elapsedMs - lastUpdate);
     Serial.println("ms");

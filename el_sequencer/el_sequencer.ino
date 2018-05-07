@@ -1,6 +1,7 @@
 #include <elapsedMillis.h>
 #include <SoftwareSerial.h>
 
+// TODO: what pins should we use?
 #define MASTER_TX A3
 #define MASTER_RX A4
 
