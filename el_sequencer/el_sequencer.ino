@@ -52,6 +52,8 @@ void loop() {
 
     for (int i = 0; i < NUM_OUTPUTS; i++) {
       if (bitRead(data, i) == 1) {
+        // TODO: make sure that we don't turn on more than 6 lights
+        // TODO: I think we need to loop once to check if the lights should turn off and then loop again so that numOn is correct
         digitalWrite(outputPins[i], HIGH);
 
         // make sure we stay on for a minimum amount of time
