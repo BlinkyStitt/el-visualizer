@@ -60,10 +60,6 @@ unsigned long lastUpdate = 0;
 uint minOnMs = 118; // 118? 150? 184? 200?  // the shortest amount of time to leave an output on. todo: set this based on some sort of bpm detection? read from the SD card? have a button to switch between common settings?
 
 /* https://phoxis.org/2012/07/12/get-sorted-index-orderting-of-an-array/ */
-/* holds the address of the array of which the sorted index
- * order needs to be found
- */
-float *base_arr;
 
 /* Note how the compare function compares the values of the
  * array to be sorted. The passed value to this function
@@ -71,7 +67,7 @@ float *base_arr;
  *
  * NOTE, this sorts in descending order
  */
-static int compar (const void *a, const void *b)
+static int compare_levels(const void *a, const void *b)
 {
   int aa = *((int *) a), bb = *((int *) b);
   return (currentLevel[bb] / maxLevel[bb]) - (currentLevel[aa] / maxLevel[aa]);
@@ -119,7 +115,6 @@ void setup() {
   for (int i = 0; i < numLevels; i++) {
     sortedLevelIndex[i] = i;
   }
-  base_arr = currentLevel;
 
   Serial.println("Starting...");
 }
@@ -266,41 +261,27 @@ void loop() {
   if (fft1024.available()) {
     levelFromFFT();
 
-    // sort the levels normalized against their max
-    qsort(sortedLevelIndex, numLevels, sizeof(float), compar);
+    // clear numOn. this will update as we check lights to turn them off
+    for (int i = 0; i < numOutputs; i++) {
+      numOn[i] = 0;
+    }
 
-    // output the levels
-    bool maxOnHit = false;
-    for (int j = 0; j < numLevels; j++) {
-      int i = sortedLevelIndex[j];
-
+    // turn off any quiet levels. we do this before turning any lights on so that our max lights is responsive
+    for (int i = 0; i < numLevels; i++) {
+      // update maxLevel
       if (currentLevel[i] > maxLevel[i]) {
         maxLevel[i] = currentLevel[i];
       }
 
-      if (currentLevel[i] >= maxLevel[i] * activateDifference) {
-        // this light should be on!
-        if (maxOnHit) {
-            // except we already have too many lights on!
-            // don't break the loop because we still want to decay max level and process
-            // TODO: also abort if we are the last 2 lights in the set?
-        } else {
-            // make sure we don't turn too many lights on. some configurations max out at 6.
-            if (not bitRead(output[i / 8], i % 8)) {
-              numOn[i / 8] += 1;
-
-              // prepare to send over serial
-              bitSet(output[i / 8], i % 8);
-            }
-
-            // make sure we stay on for a minimum amount of time
-            // if we were already on, extend the time that we stay on
-            turnOffMsArray[i] = elapsedMs + minOnMs;
-        }
-      } else {
+      // turn off if current level is less than the activation threshold
+      if (currentLevel[i] < maxLevel[i] * activateDifference) {
         // the output should be off
         if (elapsedMs < turnOffMsArray[i]) {
           // the output has not been on for long enough to prevent flicker. leave it on.
+          // TODO: maybe do something with numOn here after clearing it above this loop
+          if (bitRead(output[i / 8], i % 8)) {
+            numOn[i / 8] += 1;
+          }
         } else {
           // the output has been on for at least minOnMs and is quiet now
           // turn it off if it is on
@@ -309,16 +290,42 @@ void loop() {
             // TODO: otherwise we could end up leaving a light off even when there will be room for it
             numOn[i / 8] -= 1;
 
-            // prepare to send over serial
+            // prepare to send OFF over serial
             bitClear(output[i / 8], i % 8);
           }
         }
+      } else {
+        if (bitRead(output[i / 8], i % 8)) {
+          numOn[i / 8] += 1;
+        }
       }
+    }
 
-      // once one numOn is full, stop turning any on more lights on. since they are sorted, any later lights will be quieter
-      // TODO: maxOn needs more thought. i think it might not be working well
-      if (numOn[i / 8] >= maxOnPerOutput) {
-        maxOnHit = true;
+    // sort the levels normalized against their max
+    qsort(sortedLevelIndex, numLevels, sizeof(float), compare_levels);
+
+    // turn on up to maxOnPerOutput loud levels in order of loudest to quietest
+    for (int j = 0; j < numLevels; j++) {
+      int i = sortedLevelIndex[j];
+
+      if (currentLevel[i] >= maxLevel[i] * activateDifference) {
+        // this light should be on!
+        if (numOn[i / 8] >= maxOnPerOutput) {
+          // except we already have too many lights on!
+          // don't break the loop because we still want to decay max level and process
+        } else {
+          if (not bitRead(output[i / 8], i % 8)) {
+            // track to make sure we don't turn too many lights on. some configurations max out at 6.
+            numOn[i / 8] += 1;
+
+            // prepare to send ON over serial
+            bitSet(output[i / 8], i % 8);
+          }
+
+          // make sure we stay on for a minimum amount of time
+          // if we were already on, extend the time that we stay on
+          turnOffMsArray[i] = elapsedMs + minOnMs;
+        }
       }
 
       // decay maxLevel
@@ -335,8 +342,6 @@ void loop() {
         Serial.print("    ");
       }
     }
-
-    // debug print
     Serial.print("| ");
     Serial.print(AudioMemoryUsageMax());
     Serial.print(" blocks | ");
@@ -349,7 +354,7 @@ void loop() {
 
     // make sure that first byte finished writing
     Serial1.flush();
-    // mySerial doesn't have a flush method :(
+    // mySerial doesn't have a flush method
 
     Serial.print(elapsedMs - lastUpdate);
     Serial.println("ms");
