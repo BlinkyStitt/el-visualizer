@@ -1,6 +1,6 @@
-# EL Visualizer
+# EL Visualizer (DEPRECATED)
 
-**Under Construction**
+**Updated code at new repo: https://github.com/WyseNynja/teensy-visualizer**
 
 Control el wires with the sound around you.
 
